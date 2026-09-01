@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#312e81" />
+    </linearGradient>
+    <linearGradient id="coinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  
+  <!-- App Background with smooth rounded squircle -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  
+  <!-- Inner Safe Glow -->
+  <circle cx="256" cy="256" r="180" fill="#ffffff" fill-opacity="0.05" />
+  
+  <!-- Centered Modern Wallet / Ledger Graphic with Rupee & Friend Dots -->
+  <g filter="url(#shadow)">
+    <!-- Main Card Plate -->
+    <rect x="106" y="146" width="300" height="220" rx="36" fill="#ffffff" fill-opacity="0.95" />
+    
+    <!-- Indigo Accent Header on Card -->
+    <path d="M 106 182 Q 106 146 142 146 L 370 146 Q 406 146 406 182 L 406 200 L 106 200 Z" fill="#4338ca" />
+    
+    <!-- 5 Friend Team Indicator Dots on top bar -->
+    <circle cx="160" cy="173" r="8" fill="#38bdf8" />
+    <circle cx="185" cy="173" r="8" fill="#ec4899" />
+    <circle cx="210" cy="173" r="8" fill="#f59e0b" />
+    <circle cx="235" cy="173" r="8" fill="#10b981" />
+    <circle cx="260" cy="173" r="8" fill="#a855f7" />
+
+    <!-- Indian Rupee Emblem Badge -->
+    <circle cx="256" cy="285" r="50" fill="url(#coinGrad)" />
+    <text x="256" y="306" font-family="system-ui, -apple-system, sans-serif" font-size="58" font-weight="900" fill="#ffffff" text-anchor="middle">₹</text>
+    
+    <!-- Quick Trend Growth Arrow -->
+    <path d="M 320 280 L 350 250 L 350 270 M 350 250 L 330 250" stroke="#10b981" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  </g>
+</svg>

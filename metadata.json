@@ -1,0 +1,6 @@
+{
+  "name": "Friends Expense Tracker",
+  "description": "Fast, mobile-first continuous expense tracker & analytics dashboard for Nimal, Etti, Dharan, Sanjai, and Santhosh with instant 3-tap entry, full August 2026 data, and professional PDF reports.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
