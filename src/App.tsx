@@ -57,7 +57,10 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    reloadData();
+    const unsubscribe = db.subscribe((updatedExpenses) => {
+      setExpenses(updatedExpenses);
+    });
+    return () => unsubscribe();
   }, []);
 
   // Compute available months dynamically from expenses and current calendar date

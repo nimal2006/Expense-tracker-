@@ -1,10 +1,20 @@
-import { Expense, MemberName, CategoryName, PaymentMode, SmartInsight } from '../types';
+import { Expense, MemberName, CategoryName, PaymentMode } from '../types';
 import { INITIAL_EXPENSES } from '../data/initialExpenses';
+import { 
+  seedInitialDataIfEmpty, 
+  subscribeToExpenses, 
+  subscribeToBudgets, 
+  saveExpenseToCloud, 
+  deleteExpenseFromCloud, 
+  saveBudgetToCloud 
+} from './firebase';
 
 const STORAGE_KEY_EXPENSES = 'friends_expense_tracker_db_v2';
 const STORAGE_KEY_CURRENT_USER = 'friends_expense_current_user_v2';
 const STORAGE_KEY_BUDGETS = 'friends_expense_budgets_v2';
 const STORAGE_KEY_USER_PINS = 'friends_expense_pins_v2';
+
+type ListenerCallback = (expenses: Expense[]) => void;
 
 export class DatabaseService {
   private static instance: DatabaseService;
@@ -13,9 +23,12 @@ export class DatabaseService {
     '2026-08': 25000,
     '2026-09': 20000
   };
+  private listeners: Set<ListenerCallback> = new Set();
+  private isCloudConnected: boolean = false;
 
   private constructor() {
     this.initDatabase();
+    this.initFirebaseSync();
   }
 
   public static getInstance(): DatabaseService {
@@ -34,11 +47,11 @@ export class DatabaseService {
           this.expenses = parsed;
         } else {
           this.expenses = [...INITIAL_EXPENSES];
-          this.saveExpenses();
+          this.saveLocalExpenses();
         }
       } else {
         this.expenses = [...INITIAL_EXPENSES];
-        this.saveExpenses();
+        this.saveLocalExpenses();
       }
 
       const storedBudgets = localStorage.getItem(STORAGE_KEY_BUDGETS);
@@ -46,17 +59,62 @@ export class DatabaseService {
         this.budgets = { ...this.budgets, ...JSON.parse(storedBudgets) };
       }
     } catch (e) {
-      console.error('Error initializing database storage:', e);
+      console.error('Error initializing local database storage:', e);
       this.expenses = [...INITIAL_EXPENSES];
     }
   }
 
-  private saveExpenses(): void {
+  private initFirebaseSync(): void {
+    // 1. Seed cloud data if cloud is empty on fresh database
+    seedInitialDataIfEmpty().catch(console.warn);
+
+    // 2. Real-time listener for cloud expenses
+    subscribeToExpenses((cloudExpenses) => {
+      this.isCloudConnected = true;
+      if (cloudExpenses && cloudExpenses.length > 0) {
+        this.expenses = cloudExpenses;
+        this.saveLocalExpenses();
+        this.notifyListeners();
+      }
+    });
+
+    // 3. Real-time listener for cloud budgets
+    subscribeToBudgets((cloudBudgets) => {
+      this.budgets = { ...this.budgets, ...cloudBudgets };
+      localStorage.setItem(STORAGE_KEY_BUDGETS, JSON.stringify(this.budgets));
+    });
+  }
+
+  private saveLocalExpenses(): void {
     try {
       localStorage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(this.expenses));
     } catch (e) {
       console.error('Failed to save to localStorage:', e);
     }
+  }
+
+  public subscribe(callback: ListenerCallback): () => void {
+    this.listeners.add(callback);
+    // Immediately invoke with current data
+    callback(this.getAllExpenses());
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  private notifyListeners(): void {
+    const all = this.getAllExpenses();
+    this.listeners.forEach(cb => {
+      try {
+        cb(all);
+      } catch (e) {
+        console.error('Listener callback error:', e);
+      }
+    });
+  }
+
+  public isLiveConnected(): boolean {
+    return this.isCloudConnected;
   }
 
   // --- Auth & Member Session ---
@@ -129,7 +187,14 @@ export class DatabaseService {
     };
 
     this.expenses.unshift(newExpense);
-    this.saveExpenses();
+    this.saveLocalExpenses();
+    this.notifyListeners();
+
+    // Sync to Cloud Firestore instantly
+    saveExpenseToCloud(newExpense).catch((err) => {
+      console.warn('Firestore cloud sync pending/offline:', err);
+    });
+
     return { success: true, expense: newExpense };
   }
 
@@ -144,7 +209,7 @@ export class DatabaseService {
     }
 
     const existing = this.expenses[index];
-    // Supabase RLS simulation: enforce that only the author can edit
+    // Row-level ownership validation: only author can edit
     if (existing.member !== currentMember) {
       return {
         success: false,
@@ -164,7 +229,14 @@ export class DatabaseService {
     };
 
     this.expenses[index] = updated;
-    this.saveExpenses();
+    this.saveLocalExpenses();
+    this.notifyListeners();
+
+    // Sync update to Cloud Firestore
+    saveExpenseToCloud(updated).catch((err) => {
+      console.warn('Firestore cloud update note:', err);
+    });
+
     return { success: true, expense: updated };
   }
 
@@ -175,7 +247,7 @@ export class DatabaseService {
     }
 
     const existing = this.expenses[index];
-    // Supabase RLS simulation: enforce that only the author can delete
+    // Row-level ownership validation: only author can delete
     if (existing.member !== currentMember) {
       return {
         success: false,
@@ -184,7 +256,14 @@ export class DatabaseService {
     }
 
     this.expenses.splice(index, 1);
-    this.saveExpenses();
+    this.saveLocalExpenses();
+    this.notifyListeners();
+
+    // Delete from Cloud Firestore
+    deleteExpenseFromCloud(id).catch((err) => {
+      console.warn('Firestore cloud delete note:', err);
+    });
+
     return { success: true };
   }
 
@@ -213,12 +292,18 @@ export class DatabaseService {
   public setBudget(monthStr: string, amount: number): void {
     this.budgets[monthStr] = amount;
     localStorage.setItem(STORAGE_KEY_BUDGETS, JSON.stringify(this.budgets));
+    saveBudgetToCloud(monthStr, amount).catch(console.warn);
   }
 
   // --- Reset/Restore ---
   public resetToAugustData(): void {
     this.expenses = [...INITIAL_EXPENSES];
-    this.saveExpenses();
+    this.saveLocalExpenses();
+    this.notifyListeners();
+    // Reseed cloud
+    INITIAL_EXPENSES.forEach(exp => {
+      saveExpenseToCloud(exp).catch(console.warn);
+    });
   }
 
   public importJsonExpenses(jsonData: Expense[]): { success: boolean; count: number; error?: string } {
@@ -226,7 +311,9 @@ export class DatabaseService {
       if (!Array.isArray(jsonData)) return { success: false, count: 0, error: 'Invalid JSON format' };
       const valid = jsonData.filter(e => e.member && e.amount > 0 && e.date);
       this.expenses = valid;
-      this.saveExpenses();
+      this.saveLocalExpenses();
+      this.notifyListeners();
+      valid.forEach(exp => saveExpenseToCloud(exp).catch(console.warn));
       return { success: true, count: valid.length };
     } catch (e: any) {
       return { success: false, count: 0, error: e.message };

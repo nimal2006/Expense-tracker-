@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "Expense": {
+      "title": "Expense",
+      "description": "Shared and personal expense record among roommates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "member": { "type": "string", "enum": ["Nimal", "Etti", "Dharan", "Sanjai", "Santhosh"] },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "paymentMode": { "type": "string" },
+        "splitWith": { "type": "array", "items": { "type": "string" } },
+        "splitRatio": { "type": "object" },
+        "isPersonalOnly": { "type": "boolean" },
+        "quantity": { "type": "number" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["member", "amount", "category", "date", "paymentMode"]
+    },
+    "Budget": {
+      "title": "Budget",
+      "description": "Monthly overall budget threshold",
+      "type": "object",
+      "properties": {
+        "month": { "type": "string" },
+        "amount": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["month", "amount"]
+    }
+  },
+  "firestore": {
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Real-time ledger of room expenses"
+    },
+    "/budgets/{monthId}": {
+      "schema": "Budget",
+      "description": "Monthly room budget caps"
+    }
+  }
+}
