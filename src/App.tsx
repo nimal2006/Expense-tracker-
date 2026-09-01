@@ -20,6 +20,7 @@ export const App: React.FC = () => {
   // Navigation & User state
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [currentMember, setCurrentMember] = useState<MemberName>(db.getCurrentUser());
+  const [isInitialSetup, setIsInitialSetup] = useState<boolean>(() => !db.hasSavedUser());
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('friends_dark_mode') === 'true';
   });
@@ -29,7 +30,7 @@ export const App: React.FC = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
   // Modals state
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(() => !db.hasSavedUser());
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState<boolean>(false);
@@ -222,9 +223,16 @@ export const App: React.FC = () => {
       {/* Global Modals */}
       <LoginModal
         isOpen={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
+        onClose={() => {
+          setIsLoginModalOpen(false);
+          setIsInitialSetup(false);
+        }}
         currentMember={currentMember}
-        onSelectMember={handleSelectMember}
+        onSelectMember={(member) => {
+          handleSelectMember(member);
+          setIsInitialSetup(false);
+        }}
+        isInitialSetup={isInitialSetup}
       />
 
       <EditExpenseModal

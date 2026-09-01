@@ -9,13 +9,15 @@ interface LoginModalProps {
   onClose: () => void;
   currentMember: MemberName;
   onSelectMember: (member: MemberName) => void;
+  isInitialSetup?: boolean;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
   isOpen,
   onClose,
   currentMember,
-  onSelectMember
+  onSelectMember,
+  isInitialSetup = false
 }) => {
   const [selectedUser, setSelectedUser] = useState<MemberName>(currentMember);
   const [pinInput, setPinInput] = useState('');
@@ -70,16 +72,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <UserCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Select Your Profile</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Tap your name for instant one-tap entry</p>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                {isInitialSetup ? 'Who is using this app?' : 'Select Your Profile'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {isInitialSetup ? 'Choose your name to start tracking expenses' : 'Tap your name for instant one-tap entry'}
+              </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {!isInitialSetup && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* 4 Friends Tap Grid */}

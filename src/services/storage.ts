@@ -60,12 +60,17 @@ export class DatabaseService {
   }
 
   // --- Auth & Member Session ---
+  public hasSavedUser(): boolean {
+    const user = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
+    return !!user && ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh'].includes(user);
+  }
+
   public getCurrentUser(): MemberName {
     const user = localStorage.getItem(STORAGE_KEY_CURRENT_USER) as MemberName;
     if (user && ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh'].includes(user)) {
       return user;
     }
-    return 'Nimal'; // Default one-tap user
+    return 'Nimal'; // Fallback default
   }
 
   public setCurrentUser(member: MemberName): void {
