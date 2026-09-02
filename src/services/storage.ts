@@ -9,7 +9,7 @@ import {
   saveBudgetToCloud 
 } from './firebase';
 
-const STORAGE_KEY_EXPENSES = 'friends_expense_tracker_db_v2';
+const STORAGE_KEY_EXPENSES = 'friends_expense_tracker_db_v3';
 const STORAGE_KEY_CURRENT_USER = 'friends_expense_current_user_v2';
 const STORAGE_KEY_BUDGETS = 'friends_expense_budgets_v2';
 const STORAGE_KEY_USER_PINS = 'friends_expense_pins_v2';
@@ -25,6 +25,7 @@ export class DatabaseService {
   };
   private listeners: Set<ListenerCallback> = new Set();
   private isCloudConnected: boolean = false;
+  private hasInitializedCloudSync: boolean = false;
 
   private constructor() {
     this.initDatabase();
@@ -50,8 +51,21 @@ export class DatabaseService {
           this.saveLocalExpenses();
         }
       } else {
-        this.expenses = [...INITIAL_EXPENSES];
-        this.saveLocalExpenses();
+        // Check older storage keys if upgrading
+        const older = localStorage.getItem('friends_expense_tracker_db_v2');
+        if (older) {
+          const parsedOlder = JSON.parse(older);
+          if (Array.isArray(parsedOlder) && parsedOlder.length > 0) {
+            this.expenses = parsedOlder;
+            this.saveLocalExpenses();
+          } else {
+            this.expenses = [...INITIAL_EXPENSES];
+            this.saveLocalExpenses();
+          }
+        } else {
+          this.expenses = [...INITIAL_EXPENSES];
+          this.saveLocalExpenses();
+        }
       }
 
       const storedBudgets = localStorage.getItem(STORAGE_KEY_BUDGETS);
@@ -65,6 +79,9 @@ export class DatabaseService {
   }
 
   private initFirebaseSync(): void {
+    if (this.hasInitializedCloudSync) return;
+    this.hasInitializedCloudSync = true;
+
     // 1. Seed cloud data if cloud is empty on fresh database
     seedInitialDataIfEmpty().catch(console.warn);
 
@@ -72,7 +89,27 @@ export class DatabaseService {
     subscribeToExpenses((cloudExpenses) => {
       this.isCloudConnected = true;
       if (cloudExpenses && cloudExpenses.length > 0) {
-        this.expenses = cloudExpenses;
+        // Merge cloud expenses with any local-only entries so nothing gets lost
+        const cloudIds = new Set(cloudExpenses.map(e => e.id));
+        const localOnly = this.expenses.filter(e => !cloudIds.has(e.id));
+
+        // Upload any local-only expenses to cloud
+        if (localOnly.length > 0) {
+          console.log(`Syncing ${localOnly.length} local offline expenses to Cloud Firestore...`);
+          localOnly.forEach(exp => {
+            saveExpenseToCloud(exp).catch(console.warn);
+          });
+        }
+
+        // Combine and sort
+        const combined = [...cloudExpenses, ...localOnly];
+        combined.sort((a, b) => {
+          const dateA = new Date(`${a.date}T${a.time || '00:00'}:00`).getTime();
+          const dateB = new Date(`${b.date}T${b.time || '00:00'}:00`).getTime();
+          return dateB - dateA;
+        });
+
+        this.expenses = combined;
         this.saveLocalExpenses();
         this.notifyListeners();
       }
@@ -177,22 +214,39 @@ export class DatabaseService {
 
     const now = new Date();
     const id = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    
+    // Clean fields so there are no undefined values
     const newExpense: Expense = {
-      ...data,
       id,
-      amount: Math.round(Number(data.amount) * 100) / 100, // Proper decimal precision
+      member: data.member,
+      amount: Math.round(Number(data.amount) * 100) / 100,
+      category: data.category,
+      paymentMode: data.paymentMode,
+      date: data.date,
+      time: data.time || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
       quantity: Number(data.quantity) || 1,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString()
     };
 
+    if (data.itemName && data.itemName.trim()) {
+      newExpense.itemName = data.itemName.trim();
+    }
+    if (data.place && data.place.trim()) {
+      newExpense.place = data.place.trim();
+    }
+    if (data.notes && data.notes.trim()) {
+      newExpense.notes = data.notes.trim();
+    }
+
+    // Immediately update in-memory array & local storage
     this.expenses.unshift(newExpense);
     this.saveLocalExpenses();
     this.notifyListeners();
 
     // Sync to Cloud Firestore instantly
     saveExpenseToCloud(newExpense).catch((err) => {
-      console.warn('Firestore cloud sync pending/offline:', err);
+      console.warn('Firestore cloud sync pending or offline:', err);
     });
 
     return { success: true, expense: newExpense };
@@ -227,6 +281,22 @@ export class DatabaseService {
       amount: updates.amount !== undefined ? Math.round(Number(updates.amount) * 100) / 100 : existing.amount,
       updatedAt: new Date().toISOString()
     };
+
+    // Clean up empty/whitespace fields
+    if (updates.itemName !== undefined) {
+      if (updates.itemName && updates.itemName.trim()) {
+        updated.itemName = updates.itemName.trim();
+      } else {
+        delete updated.itemName;
+      }
+    }
+    if (updates.place !== undefined) {
+      if (updates.place && updates.place.trim()) {
+        updated.place = updates.place.trim();
+      } else {
+        delete updated.place;
+      }
+    }
 
     this.expenses[index] = updated;
     this.saveLocalExpenses();
@@ -267,7 +337,7 @@ export class DatabaseService {
     return { success: true };
   }
 
-  // Duplicate entry lightweight detector (non-blocking warning)
+  // Duplicate entry detector
   public checkDuplicateWarning(
     amount: number,
     category: CategoryName,
@@ -277,7 +347,6 @@ export class DatabaseService {
     if (!amount || isNaN(amount)) return null;
     const cleanAmount = Number(amount);
     
-    // Find if same member had an identical or close transaction on the same date with same category
     const match = this.expenses.find(
       e => e.member === member && e.date === date && e.category === category && Math.abs(e.amount - cleanAmount) < 0.01
     );
@@ -300,7 +369,6 @@ export class DatabaseService {
     this.expenses = [...INITIAL_EXPENSES];
     this.saveLocalExpenses();
     this.notifyListeners();
-    // Reseed cloud
     INITIAL_EXPENSES.forEach(exp => {
       saveExpenseToCloud(exp).catch(console.warn);
     });

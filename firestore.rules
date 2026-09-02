@@ -1,45 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function isValidMember(member) {
-      return member in ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh'];
-    }
-
-    function isValidExpense(data) {
-      return data.member is string 
-        && isValidMember(data.member)
-        && data.amount is number 
-        && data.amount > 0
-        && data.category is string
-        && data.date is string;
-    }
-
-    function isValidBudget(data) {
-      return data.month is string 
-        && data.amount is number 
-        && data.amount >= 0;
-    }
-
     match /expenses/{expenseId} {
-      allow read: if true;
-      allow create: if isValidId(expenseId) && isValidExpense(request.resource.data);
-      allow update: if isValidId(expenseId) && isValidExpense(request.resource.data);
-      allow delete: if isValidId(expenseId);
+      allow read, write: if true;
     }
 
     match /budgets/{monthId} {
-      allow read: if true;
-      allow create, update: if isValidId(monthId) && isValidBudget(request.resource.data);
-      allow delete: if isValidId(monthId);
+      allow read, write: if true;
     }
 
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }

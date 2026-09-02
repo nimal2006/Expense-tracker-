@@ -11,8 +11,10 @@ import {
   ChevronDown, 
   Plus, 
   Calendar,
-  WifiOff
+  WifiOff,
+  Cloud
 } from 'lucide-react';
+import { db } from '../services/storage';
 
 interface HeaderProps {
   selectedMonth: string;
@@ -57,7 +59,12 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="text-xs xs:text-sm sm:text-base md:text-lg font-bold text-slate-900 dark:text-white leading-tight truncate">
                   Friends <span className="hidden xs:inline">Expense </span>Tracker
                 </h1>
-                {!isOnline && (
+                {isOnline ? (
+                  <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold border border-emerald-500/20" title="Connected to Real-time Cloud Database">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Live Cloud</span>
+                  </span>
+                ) : (
                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-500/30">
                     <WifiOff className="w-2.5 h-2.5 animate-pulse" />
                     <span>Offline</span>

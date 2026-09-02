@@ -20,13 +20,14 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 // Initialize Firestore with custom database ID from config
 export const firestore = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
-// Validate connection per Firebase integration guidelines
+// Validate connection
 async function testConnection() {
   try {
     await getDocFromServer(doc(firestore, 'test', 'connection'));
+    console.log('Firebase Firestore successfully connected!');
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase Firestore client running in offline mode.');
+      console.warn('Firebase Firestore client in offline cache mode.');
     }
   }
 }
@@ -35,6 +36,24 @@ testConnection();
 // Collection references
 const EXPENSES_COLLECTION = 'expenses';
 const BUDGETS_COLLECTION = 'budgets';
+
+/**
+ * Remove any undefined properties because Firestore SDK throws error on `undefined`
+ */
+export function cleanForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  Object.keys(obj).forEach((key) => {
+    const val = obj[key];
+    if (val !== undefined) {
+      if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        result[key] = cleanForFirestore(val);
+      } else {
+        result[key] = val;
+      }
+    }
+  });
+  return result;
+}
 
 /**
  * Seed initial expenses if Firestore is completely empty on first launch
@@ -48,9 +67,9 @@ export async function seedInitialDataIfEmpty(): Promise<void> {
       const batch = writeBatch(firestore);
       INITIAL_EXPENSES.forEach((exp) => {
         const docRef = doc(firestore, EXPENSES_COLLECTION, exp.id);
-        batch.set(docRef, exp);
+        batch.set(docRef, cleanForFirestore(exp));
       });
-      // Also seed default budgets
+      // Seed default budgets
       const augBudgetRef = doc(firestore, BUDGETS_COLLECTION, '2026-08');
       batch.set(augBudgetRef, { month: '2026-08', amount: 25000, updatedAt: new Date().toISOString() });
       const sepBudgetRef = doc(firestore, BUDGETS_COLLECTION, '2026-09');
@@ -74,7 +93,10 @@ export function subscribeToExpenses(callback: (expenses: Expense[]) => void): ()
     (snapshot) => {
       const items: Expense[] = [];
       snapshot.forEach((docSnap) => {
-        items.push(docSnap.data() as Expense);
+        const data = docSnap.data() as Expense;
+        if (data && data.id && data.amount && data.member) {
+          items.push(data);
+        }
       });
       // Sort newest first
       items.sort((a, b) => {
@@ -122,9 +144,12 @@ export function subscribeToBudgets(callback: (budgets: Record<string, number>) =
 export async function saveExpenseToCloud(expense: Expense): Promise<void> {
   try {
     const docRef = doc(firestore, EXPENSES_COLLECTION, expense.id);
-    await setDoc(docRef, expense, { merge: true });
+    const cleaned = cleanForFirestore(expense);
+    await setDoc(docRef, cleaned, { merge: true });
+    console.log(`[Firestore] Successfully saved expense ${expense.id} (₹${expense.amount}) to cloud.`);
   } catch (e) {
     console.error('Failed to sync expense to Cloud Firestore:', e);
+    throw e;
   }
 }
 
@@ -132,8 +157,10 @@ export async function deleteExpenseFromCloud(id: string): Promise<void> {
   try {
     const docRef = doc(firestore, EXPENSES_COLLECTION, id);
     await deleteDoc(docRef);
+    console.log(`[Firestore] Successfully deleted expense ${id} from cloud.`);
   } catch (e) {
     console.error('Failed to delete expense from Cloud Firestore:', e);
+    throw e;
   }
 }
 
