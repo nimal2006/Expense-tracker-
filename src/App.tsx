@@ -18,15 +18,39 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 
 export const App: React.FC = () => {
   // Navigation & User state
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [activeTab, setActiveTabState] = useState<ActiveTab>(() => {
+    const saved = localStorage.getItem('friends_active_tab') as ActiveTab;
+    if (saved && ['dashboard', 'add', 'history', 'members', 'reports'].includes(saved)) {
+      return saved;
+    }
+    return 'dashboard';
+  });
+
+  const setActiveTab = (tab: ActiveTab) => {
+    setActiveTabState(tab);
+    if (tab !== 'budgets') {
+      localStorage.setItem('friends_active_tab', tab);
+    }
+  };
+
   const [currentMember, setCurrentMember] = useState<MemberName>(db.getCurrentUser());
   const [isInitialSetup, setIsInitialSetup] = useState<boolean>(() => !db.hasSavedUser());
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('friends_dark_mode') === 'true';
   });
 
-  // Month filtering state (Defaults to August 2026 dataset or September 2026)
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-08');
+  // Month filtering state (Defaults to current calendar month, persists across refresh)
+  const currentCalMonth = getLocalDateString().substring(0, 7);
+  const [selectedMonth, setSelectedMonthState] = useState<string>(() => {
+    const saved = localStorage.getItem('friends_selected_month');
+    return saved || currentCalMonth;
+  });
+
+  const setSelectedMonth = (month: string) => {
+    setSelectedMonthState(month);
+    localStorage.setItem('friends_selected_month', month);
+  };
+
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
   // Modals state
