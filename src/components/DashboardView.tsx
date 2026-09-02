@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Expense, MemberName } from '../types';
 import { MEMBERS, CATEGORIES, PAYMENT_MODES } from '../data/categories';
@@ -12,30 +12,28 @@ import {
   formatExactCurrency,
   getLocalDateString
 } from '../utils/analytics';
+import { db } from '../services/storage';
 import {
   Wallet,
   FileSpreadsheet,
   TrendingUp,
-  TrendingDown,
   Calendar,
   PieChart as PieChartIcon,
   Trophy,
   Plus,
   ArrowRight,
   Sparkles,
-  Receipt,
-  QrCode,
-  Banknote,
-  CreditCard,
   Users,
+  User,
   Lightbulb,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
-  Tag,
   Target,
   Flame,
-  Zap
+  Zap,
+  DollarSign,
+  Percent
 } from 'lucide-react';
 import {
   PieChart,
@@ -49,8 +47,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   LineChart,
-  Line,
-  Legend
+  Line
 } from 'recharts';
 
 interface DashboardViewProps {
@@ -73,11 +70,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToHistory,
   onSelectCategoryFilter,
   onSelectMemberFilter,
-  monthlyBudget = 25000,
+  monthlyBudget,
   onOpenBudgetModal
 }) => {
+  // View Scope: 'my' (individual personal mode) vs 'group' (all 5 friends combined)
+  const [viewScope, setViewScope] = useState<'my' | 'group'>('my');
+
   // Filter expenses for current selected month
-  const currentMonthExpenses = selectedMonth === 'all'
+  const currentMonthAllExpenses = selectedMonth === 'all'
     ? expenses
     : expenses.filter(e => e.date.startsWith(selectedMonth));
 
@@ -88,16 +88,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   } else if (selectedMonth === '2026-08') {
     previousMonthStr = '2026-07';
   }
-  const previousMonthExpenses = expenses.filter(e => e.date.startsWith(previousMonthStr));
+  const previousMonthAllExpenses = expenses.filter(e => e.date.startsWith(previousMonthStr));
 
-  const summary = calculateSummaryMetrics(currentMonthExpenses, previousMonthExpenses);
-  const dailyData = calculateDailySpending(currentMonthExpenses, selectedMonth === 'all' ? '2026-08' : selectedMonth);
-  const weeklyData = calculateWeeklySpending(currentMonthExpenses, selectedMonth === 'all' ? '2026-08' : selectedMonth);
-  const monthlyTrendData = calculateMonthlyTrend(expenses, '2026');
-  const insights = generateSmartInsights(currentMonthExpenses, selectedMonth, previousMonthExpenses);
+  // Group Summary across all friends
+  const groupSummary = calculateSummaryMetrics(currentMonthAllExpenses, previousMonthAllExpenses);
+
+  // Active Expenses based on selected view scope (Personal vs Group)
+  const activeCurrentExpenses = viewScope === 'my'
+    ? currentMonthAllExpenses.filter(e => e.member === currentMember)
+    : currentMonthAllExpenses;
+
+  const activePreviousExpenses = viewScope === 'my'
+    ? previousMonthAllExpenses.filter(e => e.member === currentMember)
+    : previousMonthAllExpenses;
+
+  const summary = calculateSummaryMetrics(activeCurrentExpenses, activePreviousExpenses);
+  const dailyData = calculateDailySpending(activeCurrentExpenses, selectedMonth === 'all' ? '2026-08' : selectedMonth);
+  const weeklyData = calculateWeeklySpending(activeCurrentExpenses, selectedMonth === 'all' ? '2026-08' : selectedMonth);
+  const monthlyTrendData = calculateMonthlyTrend(
+    viewScope === 'my' ? expenses.filter(e => e.member === currentMember) : expenses, 
+    '2026'
+  );
+  const insights = generateSmartInsights(activeCurrentExpenses, selectedMonth, activePreviousExpenses);
+
+  // Active Budget for the active mode
+  const monthKey = selectedMonth === 'all' ? '2026-08' : selectedMonth;
+  const activeBudget = viewScope === 'my'
+    ? (monthlyBudget || db.getBudget(monthKey, currentMember))
+    : db.getGroupBudget(monthKey);
 
   // Recent transactions (top 5 newest)
-  const recentTransactions = [...currentMonthExpenses]
+  const recentTransactions = [...activeCurrentExpenses]
     .sort((a, b) => new Date(`${b.date}T${b.time || '00:00'}:00`).getTime() - new Date(`${a.date}T${a.time || '00:00'}:00`).getTime())
     .slice(0, 5);
 
@@ -110,10 +131,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     Santhosh: '#8B5CF6' // Purple/Violet
   };
 
-  // Member comparison chart dataset
+  // Member comparison chart dataset (in group mode)
   const memberComparisonData = MEMBERS.map(m => ({
     name: m.name,
-    amount: summary.memberTotals[m.name]?.amount || 0,
+    amount: groupSummary.memberTotals[m.name]?.amount || 0,
     fill: memberColors[m.name] || '#6366F1'
   }));
 
@@ -146,7 +167,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     fullLabel: w.label
   }));
 
-  // Daily spending chart dataset (every 2-3 days sample for clean rendering)
+  // Daily spending chart dataset
   const dailyChartData = dailyData.map(d => ({
     day: d.day,
     amount: d.amount,
@@ -154,25 +175,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }));
 
   // Monthly Budget metrics
-  const budgetSpentPct = monthlyBudget > 0 ? Math.min(Math.round((summary.totalExpense / monthlyBudget) * 100), 100) : 0;
-  const budgetRemaining = Math.max(monthlyBudget - summary.totalExpense, 0);
+  const budgetSpentPct = activeBudget > 0 ? Math.min(Math.round((summary.totalExpense / activeBudget) * 100), 100) : 0;
+  const budgetRemaining = Math.max(activeBudget - summary.totalExpense, 0);
 
-  // Daily Budget metrics (derived from set monthly budget / number of days in selected month)
+  // Daily Budget metrics
   const todayStr = getLocalDateString(new Date());
   const activeMonthStr = selectedMonth === 'all' ? todayStr.substring(0, 7) : selectedMonth;
   const [yearNum, monthNum] = activeMonthStr.split('-').map(Number);
   const daysInMonth = (yearNum && monthNum) ? new Date(yearNum, monthNum, 0).getDate() : 30;
-  const targetDailyBudget = Math.max(Math.round(monthlyBudget / daysInMonth), 1);
-  const todayTotalSpent = summary.todayTotal;
-  const dailySpentPct = targetDailyBudget > 0 ? Math.round((todayTotalSpent / targetDailyBudget) * 100) : 0;
+  const targetDailyBudget = Math.max(Math.round(activeBudget / daysInMonth), 1);
+  
+  // Today's spend for active mode
+  const activeTodaySpent = summary.todayTotal;
+  const dailySpentPct = targetDailyBudget > 0 ? Math.round((activeTodaySpent / targetDailyBudget) * 100) : 0;
   const clampedDailyPct = Math.min(dailySpentPct, 100);
-  const dailyRemaining = Math.max(targetDailyBudget - todayTotalSpent, 0);
-  const isDailyOver = todayTotalSpent > targetDailyBudget;
-  const dailyOverspend = Math.max(todayTotalSpent - targetDailyBudget, 0);
+  const dailyRemaining = Math.max(targetDailyBudget - activeTodaySpent, 0);
+  const isDailyOver = activeTodaySpent > targetDailyBudget;
+  const dailyOverspend = Math.max(activeTodaySpent - targetDailyBudget, 0);
 
-  // Current logged in member's spend today
-  const userTodayExpenses = currentMonthExpenses.filter(e => e.date === todayStr && e.member === currentMember);
-  const userTodaySpent = userTodayExpenses.reduce((sum, e) => sum + e.amount, 0);
+  // User share percentage in room group
+  const myTotalSpent = groupSummary.memberTotals[currentMember]?.amount || 0;
+  const roomTotalSpent = groupSummary.totalExpense;
+  const mySharePct = roomTotalSpent > 0 ? Math.round((myTotalSpent / roomTotalSpent) * 100) : 0;
+
+  const currentMemberObj = MEMBERS.find(m => m.name === currentMember) || MEMBERS[0];
 
   return (
     <motion.div
@@ -183,7 +209,67 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     >
 
       {/* ========================================================
-          0. DAILY SPENDING PROGRESS BAR (vs Monthly Limit)
+          DASHBOARD SCOPE HEADER: Personal View vs Room Group Toggle
+          ======================================================== */}
+      <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className={`w-12 h-12 rounded-2xl ${
+            viewScope === 'my' 
+              ? `${currentMemberObj.avatarColor} text-white` 
+              : 'bg-gradient-to-tr from-amber-500 to-indigo-600 text-white'
+          } flex items-center justify-center font-bold text-lg shadow-md shrink-0`}>
+            {viewScope === 'my' ? currentMemberObj.avatarLetter : '👥'}
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                {viewScope === 'my' ? `${currentMember}'s Personal Dashboard` : 'Room Group Dashboard'}
+              </h1>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                viewScope === 'my' 
+                  ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800' 
+                  : 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+              }`}>
+                {viewScope === 'my' ? `👤 Personal Spend (${currentMember})` : '👥 All 5 Friends'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {viewScope === 'my' 
+                ? `Tracking your individual expenses & personal budget for ${selectedMonth === 'all' ? 'all months' : selectedMonth}` 
+                : `Combined outflow & expense distribution for all 5 room members`}
+            </p>
+          </div>
+        </div>
+
+        {/* View Switcher Segmented Control */}
+        <div className="flex bg-slate-100 dark:bg-slate-800/90 p-1 rounded-2xl shrink-0 self-start sm:self-center border border-slate-200/60 dark:border-slate-700/60">
+          <button
+            onClick={() => setViewScope('my')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewScope === 'my'
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>My Expenses ({currentMember})</span>
+          </button>
+          <button
+            onClick={() => setViewScope('group')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewScope === 'group'
+                ? 'bg-white dark:bg-slate-700 text-amber-600 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Room Group (All 5)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================
+          0. DAILY SPENDING PROGRESS BAR (Personal or Group Pace)
           ======================================================== */}
       <motion.div
         whileHover={{ y: -2 }}
@@ -210,7 +296,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                  Daily Spending Progress
+                  {viewScope === 'my' ? `${currentMember}'s Daily Spending Progress` : 'Room Group Daily Progress'}
                 </h2>
                 {isDailyOver ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
@@ -229,7 +315,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Today's group outflow compared to target daily pace ({formatCurrency(monthlyBudget)} / {daysInMonth} days)
+                {viewScope === 'my'
+                  ? `Your personal today spend vs your daily allowance (${formatCurrency(activeBudget)} / ${daysInMonth} days)`
+                  : `Total room outflow today compared to group pace (${formatCurrency(activeBudget)} / ${daysInMonth} days)`}
               </p>
             </div>
           </div>
@@ -238,11 +326,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {onOpenBudgetModal && (
               <button
                 onClick={onOpenBudgetModal}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors flex items-center gap-1.5"
-                title="Adjust monthly spending limit"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors flex items-center gap-1.5 border border-slate-200/60 dark:border-slate-700/60"
+                title="Adjust your spending limit"
               >
                 <Target className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Set Budget</span>
+                <span>{viewScope === 'my' ? `Set My Budget` : `Set Group Budget`}</span>
               </button>
             )}
             <button
@@ -260,14 +348,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex justify-between items-end text-xs">
             <div className="flex items-baseline gap-1.5">
               <span className="font-extrabold text-slate-900 dark:text-white text-base">
-                {formatCurrency(todayTotalSpent)}
+                {formatCurrency(activeTodaySpent)}
               </span>
               <span className="text-slate-400 text-xs font-medium">
-                spent today {userTodaySpent > 0 && `(${formatCurrency(userTodaySpent)} by you)`}
+                {viewScope === 'my' ? 'spent by you today' : 'spent by room today'}
               </span>
             </div>
             <div className="text-right">
-              <span className="text-slate-500 dark:text-slate-400 text-xs">Daily Target: </span>
+              <span className="text-slate-500 dark:text-slate-400 text-xs">
+                {viewScope === 'my' ? 'Your Daily Target: ' : 'Group Daily Target: '}
+              </span>
               <span className="font-bold text-slate-900 dark:text-white">
                 {formatCurrency(targetDailyBudget)} / day
               </span>
@@ -292,10 +382,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs">
             <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Today Spent
+                {viewScope === 'my' ? 'You Spent Today' : 'Today Spent'}
               </span>
               <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white mt-0.5 block">
-                {formatCurrency(todayTotalSpent)}
+                {formatCurrency(activeTodaySpent)}
               </span>
             </div>
 
@@ -323,10 +413,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Monthly Cap
+                {viewScope === 'my' ? 'Your Monthly Cap' : 'Group Monthly Cap'}
               </span>
               <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white mt-0.5 block truncate">
-                {formatCurrency(monthlyBudget)} ({budgetSpentPct}% used)
+                {formatCurrency(activeBudget)} ({budgetSpentPct}% used)
               </span>
             </div>
           </div>
@@ -334,234 +424,330 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </motion.div>
       
       {/* ========================================================
-          1. TOP STATS CARDS (Total Expense + Members + Total Txns)
+          1. TOP STATS CARDS (Personal Mode or Group Mode)
           ======================================================== */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4">
-        
-        {/* Total Expense Card */}
-        <motion.div
-          whileHover={{ y: -3 }}
-          transition={{ duration: 0.18 }}
-          className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
-        >
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                <Wallet className="w-4 h-4" />
-              </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Group
-              </span>
-            </div>
-            <div className="mt-3">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Total Expense
-              </span>
-              <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
-                {formatCurrency(summary.totalExpense)}
-              </div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {selectedMonth === 'all' ? 'All Months' : selectedMonth}
-              </div>
-            </div>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Active records</span>
-          </div>
-        </motion.div>
-
-        {/* Dynamic Member Total Cards */}
-        {MEMBERS.map((member) => {
-          const data = summary.memberTotals[member.name] || { amount: 0, count: 0, percentage: 0 };
-          return (
-            <motion.div
-              key={member.id}
-              whileHover={{ y: -3 }}
-              transition={{ duration: 0.18 }}
-              className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => onSelectMemberFilter && onSelectMemberFilter(member.name)}
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <div className={`w-8 h-8 rounded-xl ${member.avatarColor} flex items-center justify-center text-xs font-bold shadow-sm`}>
-                    {member.avatarLetter}
-                  </div>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                    {data.percentage}%
-                  </span>
+      {viewScope === 'my' ? (
+        /* PERSONAL MODE STATS CARDS FOR LOGGED IN MEMBER */
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+          {/* 1. My Total Expense */}
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.18 }}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Wallet className="w-4 h-4" />
                 </div>
-                <div className="mt-3">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {member.name} Total
-                  </span>
-                  <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
-                    {formatCurrency(data.amount)}
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
-                    {data.count} transactions
-                  </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                  {currentMember}
+                </span>
+              </div>
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  My Total Spent
+                </span>
+                <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
+                  {formatCurrency(summary.totalExpense)}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                  {selectedMonth === 'all' ? 'All Months' : selectedMonth}
                 </div>
               </div>
-              <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                <span>{data.percentage}% of total</span>
-              </div>
-            </motion.div>
-          );
-        })}
-
-        {/* Total Transactions Card */}
-        <motion.div
-          whileHover={{ y: -3 }}
-          transition={{ duration: 0.18 }}
-          className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
-        >
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="w-8 h-8 rounded-xl bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
-                <FileSpreadsheet className="w-4 h-4" />
-              </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Total
-              </span>
             </div>
-            <div className="mt-3">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Total Transactions
-              </span>
-              <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
-                {summary.totalTransactions}
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+              <span>{summary.totalTransactions} transactions</span>
+            </div>
+          </motion.div>
+
+          {/* 2. My Monthly Budget Limit */}
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.18 }}
+            onClick={onOpenBudgetModal}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow cursor-pointer group"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <Target className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">
+                  Edit ✏️
+                </span>
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                Entries recorded
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  My Budget Limit
+                </span>
+                <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
+                  {formatCurrency(activeBudget)}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  {budgetRemaining > 0 ? `${formatCurrency(budgetRemaining)} left` : 'Budget reached'}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-cyan-600 dark:text-cyan-400">
-            <span>100% verified ledger</span>
-          </div>
-        </motion.div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <span>{budgetSpentPct}% utilized</span>
+            </div>
+          </motion.div>
 
-      </div>
+          {/* 3. My Daily Average Spend */}
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.18 }}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Pace
+                </span>
+              </div>
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  My Daily Avg
+                </span>
+                <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
+                  {formatCurrency(Math.round(summary.avgDailySpending))}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  per day
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+              <span>Avg ₹{Math.round(summary.avgPerTransaction)}/txn</span>
+            </div>
+          </motion.div>
+
+          {/* 4. My Top Category */}
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.18 }}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <Trophy className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                  {summary.topCategory.percentage}%
+                </span>
+              </div>
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  My Top Category
+                </span>
+                <div className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5 truncate">
+                  {summary.topCategory.category}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  {formatCurrency(summary.topCategory.amount)} spent
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+              <span>Rank #1 Category</span>
+            </div>
+          </motion.div>
+
+          {/* 5. Room Contribution Share */}
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.18 }}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Percent className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                  Room
+                </span>
+              </div>
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  My Room Share
+                </span>
+                <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
+                  {mySharePct}%
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                  of ₹{formatCurrency(roomTotalSpent)} room total
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+              <span>5-person share</span>
+            </div>
+          </motion.div>
+
+          {/* 6. Quick CTA */}
+          <button
+            onClick={onOpenAddExpense}
+            className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white p-4 rounded-3xl shadow-md shadow-indigo-600/20 flex flex-col justify-between text-left transition-transform active:scale-[0.98] group"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center group-hover:translate-x-0.5 transition-transform">
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <span className="text-xs font-bold text-indigo-200">
+                  Record New
+                </span>
+                <div className="text-base font-black text-white mt-0.5">
+                  Add Expense
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-white/20 text-[11px] text-indigo-100 font-medium">
+              3-tap instant entry
+            </div>
+          </button>
+        </div>
+      ) : (
+        /* ROOM GROUP MODE STATS CARDS (ALL 5 FRIENDS) */
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4">
+          {/* Total Expense Card */}
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.18 }}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Wallet className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Room Total
+                </span>
+              </div>
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Total Room Spend
+                </span>
+                <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
+                  {formatCurrency(groupSummary.totalExpense)}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                  {selectedMonth === 'all' ? 'All Months' : selectedMonth}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>All 5 friends combined</span>
+            </div>
+          </motion.div>
+
+          {/* Dynamic Member Total Cards */}
+          {MEMBERS.map((member) => {
+            const data = groupSummary.memberTotals[member.name] || { amount: 0, count: 0, percentage: 0 };
+            const isUser = member.name === currentMember;
+            return (
+              <motion.div
+                key={member.id}
+                whileHover={{ y: -3 }}
+                transition={{ duration: 0.18 }}
+                className={`bg-white dark:bg-slate-900 p-4 rounded-3xl border shadow-sm flex flex-col justify-between hover:shadow-md transition-all cursor-pointer ${
+                  isUser ? 'border-indigo-300 dark:border-indigo-800 ring-1 ring-indigo-500/20' : 'border-slate-200 dark:border-slate-800'
+                }`}
+                onClick={() => onSelectMemberFilter && onSelectMemberFilter(member.name)}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className={`w-8 h-8 rounded-xl ${member.avatarColor} flex items-center justify-center text-xs font-bold shadow-sm`}>
+                      {member.avatarLetter}
+                    </div>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      isUser ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                    }`}>
+                      {data.percentage}% {isUser && '• You'}
+                    </span>
+                  </div>
+                  <div className="mt-3">
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {member.name}
+                    </span>
+                    <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
+                      {formatCurrency(data.amount)}
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      {data.count} transactions
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  <span>{data.percentage}% of room</span>
+                </div>
+              </motion.div>
+            );
+          })}
+
+          {/* Total Transactions Card */}
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.18 }}
+            className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="w-8 h-8 rounded-xl bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Entries
+                </span>
+              </div>
+              <div className="mt-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Total Txns
+                </span>
+                <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-0.5">
+                  {groupSummary.totalTransactions}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Verified records
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1 text-[11px] font-semibold text-cyan-600 dark:text-cyan-400">
+              <span>Full room ledger</span>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* ========================================================
-          2. SECOND ROW STATS & QUICK CTA
-          ======================================================== */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-        
-        {/* Today's Expense */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-            <Calendar className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
-              Today's Expense
-            </span>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
-              {formatCurrency(summary.todayTotal)}
-            </div>
-          </div>
-        </div>
-
-        {/* This Week's Expense */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-            <Calendar className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
-              This Week's
-            </span>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
-              {formatCurrency(summary.thisWeekTotal)}
-            </div>
-          </div>
-        </div>
-
-        {/* Avg Daily Spending */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
-              Avg Daily Spend
-            </span>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
-              {formatCurrency(Math.round(summary.avgDailySpending))}
-            </div>
-          </div>
-        </div>
-
-        {/* Avg / Transaction */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <PieChartIcon className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
-              Avg / Txn
-            </span>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
-              {formatExactCurrency(summary.avgPerTransaction)}
-            </div>
-          </div>
-        </div>
-
-        {/* Top Category */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-            <Trophy className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block truncate">
-              Top Category
-            </span>
-            <div className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
-              {summary.topCategory.category}
-            </div>
-            <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">
-              {summary.topCategory.percentage}% of total
-            </span>
-          </div>
-        </div>
-
-        {/* Add Expense Quick CTA Card */}
-        <button
-          onClick={onOpenAddExpense}
-          className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white p-4 rounded-3xl shadow-md shadow-indigo-600/20 flex items-center justify-between text-left transition-transform active:scale-[0.98] group"
-        >
-          <div className="min-w-0 pr-1">
-            <div className="flex items-center gap-1 text-xs font-bold text-indigo-200">
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Expense</span>
-            </div>
-            <div className="text-[11px] text-indigo-100/90 font-medium mt-0.5 truncate">
-              Quick 3-tap entry
-            </div>
-          </div>
-          <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center shrink-0 group-hover:translate-x-0.5 transition-transform">
-            <ArrowRight className="w-4 h-4" />
-          </div>
-        </button>
-
-      </div>
-
-      {/* ========================================================
-          3. THIRD ROW CHARTS: Category Donut + Member Bar + Payment Donut
+          3. CHARTS ROW: Category Donut + Member/Personal Bar + Payment Donut
           ======================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* Category Distribution (Donut Chart) */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-1">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>🍩 Category Distribution</span>
+                <span>🍩 {viewScope === 'my' ? `My Category Distribution` : `Room Category Distribution`}</span>
               </h3>
             </div>
-            <p className="text-xs text-slate-400 mb-4">Spending breakdown by category</p>
+            <p className="text-xs text-slate-400 mb-4">
+              {viewScope === 'my' ? `Where you spent your money` : `Room spending breakdown by category`}
+            </p>
           </div>
 
           <div className="h-56 w-full flex items-center justify-center">
@@ -604,13 +790,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Member Comparison (Bar Chart) */}
+        {/* Member Comparison (Bar Chart in Group Mode, or Personal Contribution in My Mode) */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-1">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>👥 Member Comparison</span>
+                <span>👥 {viewScope === 'my' ? `Room Members Comparison` : `Member Comparison`}</span>
               </h3>
+              {viewScope === 'my' && (
+                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
+                  You: {mySharePct}%
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mb-4">Total spent per friend (₹)</p>
           </div>
@@ -627,17 +818,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 />
                 <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
                   {memberComparisonData.map((entry, index) => (
-                    <Cell key={`bar-${index}`} fill={entry.fill} />
+                    <Cell 
+                      key={`bar-${index}`} 
+                      fill={entry.fill} 
+                      opacity={viewScope === 'my' && entry.name !== currentMember ? 0.45 : 1}
+                    />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-4 gap-1 pt-3 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
+          <div className="grid grid-cols-5 gap-1 pt-3 border-t border-slate-100 dark:border-slate-800 text-center text-xs">
             {memberComparisonData.map((m) => (
               <div key={m.name}>
-                <span className="text-[11px] text-slate-400 block">{m.name}</span>
+                <span className={`text-[11px] block truncate ${m.name === currentMember ? 'font-bold text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
+                  {m.name}
+                </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{formatCurrency(m.amount)}</span>
               </div>
             ))}
@@ -647,9 +844,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Payment Method Analysis (Donut Chart) */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-1">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>💳 Payment Method Analysis</span>
+                <span>💳 {viewScope === 'my' ? `My Payment Modes` : `Room Payment Analysis`}</span>
               </h3>
             </div>
             <p className="text-xs text-slate-400 mb-4">UPI vs Cash vs Card vs Friend Paid</p>
@@ -704,9 +901,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         
         {/* Weekly Spending */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              📊 Weekly Spending ({selectedMonth === 'all' ? 'Aug 2026' : selectedMonth})
+              📊 {viewScope === 'my' ? `My Weekly Spending` : `Room Weekly Spending`}
             </h3>
           </div>
           <p className="text-xs text-slate-400 mb-4">Outflow across 5 weeks of the month</p>
@@ -728,9 +925,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Daily Spending Trend */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              📈 Daily Spending Trend (Day of Month)
+              📈 {viewScope === 'my' ? `My Daily Spending Curve` : `Room Daily Spending Curve`}
             </h3>
           </div>
           <p className="text-xs text-slate-400 mb-4">Day 1 to 31 expense curve</p>
@@ -753,9 +950,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Monthly Trend 2026 */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              📉 Monthly Trend (2026 Continuous)
+              📉 {viewScope === 'my' ? `My Continuous Trend (2026)` : `Room Monthly Trend (2026)`}
             </h3>
           </div>
           <p className="text-xs text-slate-400 mb-4">Continuous year comparison</p>
@@ -787,7 +984,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                🥇 Top 10 Categories
+                🥇 {viewScope === 'my' ? `My Top Categories` : `Room Top Categories`}
               </h3>
               <p className="text-xs text-slate-400">Ranked by total expenditure</p>
             </div>
@@ -807,7 +1004,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <th className="py-2.5 px-3">#</th>
                   <th className="py-2.5 px-3">Category</th>
                   <th className="py-2.5 px-3">Amount (₹)</th>
-                  <th className="py-2.5 px-3">% of Total</th>
+                  <th className="py-2.5 px-3">% of Spend</th>
                   <th className="py-2.5 px-3">Transactions</th>
                   <th className="py-2.5 px-3">Avg / Txn</th>
                 </tr>
@@ -851,11 +1048,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Right 1 Column: Recent Transactions, Smart Insights, Tip, Monthly Budget */}
         <div className="space-y-4">
           
-          {/* Recent Transactions Card (Matching Uploaded Design) */}
+          {/* Recent Transactions Card */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Recent Transactions
+                {viewScope === 'my' ? `My Recent Transactions` : `Recent Room Transactions`}
               </h3>
               <button
                 onClick={onNavigateToHistory}
@@ -866,44 +1063,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="space-y-2.5">
-              {recentTransactions.map((tx) => {
-                const catMeta = CATEGORIES.find(c => c.name === tx.category);
-                const memberObj = MEMBERS.find(m => m.name === tx.member) || MEMBERS[0];
+              {recentTransactions.length > 0 ? (
+                recentTransactions.map((tx) => {
+                  const catMeta = CATEGORIES.find(c => c.name === tx.category);
+                  const memberObj = MEMBERS.find(m => m.name === tx.member) || MEMBERS[0];
 
-                return (
-                  <div
-                    key={tx.id}
-                    className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border border-slate-100 dark:border-slate-800/60"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-8 h-8 rounded-xl ${memberObj.avatarColor} flex items-center justify-center font-bold text-xs shrink-0 shadow-sm`}>
-                        {memberObj.avatarLetter}
+                  return (
+                    <div
+                      key={tx.id}
+                      className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border border-slate-100 dark:border-slate-800/60"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-xl ${memberObj.avatarColor} flex items-center justify-center font-bold text-xs shrink-0 shadow-sm`}>
+                          {memberObj.avatarLetter}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                            {tx.itemName || tx.category}
+                          </div>
+                          <div className="text-[11px] text-slate-400 flex items-center gap-1 truncate">
+                            <span>{tx.member}</span>
+                            <span>•</span>
+                            <span>{tx.category}</span>
+                            <span>•</span>
+                            <span>{tx.date}</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                          {tx.itemName || tx.category}
+
+                      <div className="text-right shrink-0 pl-2">
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">
+                          {formatCurrency(tx.amount)}
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 truncate">
-                          <span>{tx.member}</span>
-                          <span>•</span>
-                          <span>{tx.category}</span>
-                          <span>•</span>
-                          <span>{tx.date}</span>
-                        </div>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold uppercase">
+                          {tx.paymentMode}
+                        </span>
                       </div>
                     </div>
-
-                    <div className="text-right shrink-0 pl-2">
-                      <div className="text-xs font-bold text-slate-900 dark:text-white">
-                        {formatCurrency(tx.amount)}
-                      </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold uppercase">
-                        {tx.paymentMode}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  No personal expenses recorded yet this month.
+                </div>
+              )}
             </div>
           </div>
 
@@ -913,7 +1116,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="flex items-center gap-2">
                 <Target className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Monthly Budget
+                  {viewScope === 'my' ? `${currentMember}'s Monthly Budget` : 'Room Monthly Budget'}
                 </h3>
               </div>
               {onOpenBudgetModal && (
@@ -929,7 +1132,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div>
               <div className="flex justify-between text-xs font-bold mb-1.5">
                 <span className="text-slate-500">Spent: {formatCurrency(summary.totalExpense)}</span>
-                <span className="text-slate-900 dark:text-white">Budget: {formatCurrency(monthlyBudget)}</span>
+                <span className="text-slate-900 dark:text-white">Budget: {formatCurrency(activeBudget)}</span>
               </div>
               <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                 <div
@@ -948,22 +1151,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          {/* Tip Card (Replicating the reference design tip card) */}
-          <div className="bg-gradient-to-tr from-indigo-50 to-indigo-100/60 dark:from-indigo-950/40 dark:to-slate-900 p-4 rounded-3xl border border-indigo-200/60 dark:border-indigo-900/40 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-300">
-              <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>Tip 💡</span>
-            </div>
-            <p className="text-xs text-indigo-800 dark:text-indigo-200 leading-relaxed font-medium">
-              Change the Month/Year filters above — every card, chart, insight and breakdown on this page updates instantly from live database records.
-            </p>
-          </div>
-
           {/* Smart Insights Factual Card */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
             <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
               <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>Smart Insights</span>
+              <span>{viewScope === 'my' ? `Smart Insights for ${currentMember}` : 'Room Insights'}</span>
             </div>
 
             <div className="space-y-2">

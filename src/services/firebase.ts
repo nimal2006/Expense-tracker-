@@ -113,7 +113,7 @@ export function subscribeToExpenses(callback: (expenses: Expense[]) => void): ()
 }
 
 /**
- * Real-time listener for budgets
+ * Real-time listener for budgets (supports group and individual member budget keys)
  */
 export function subscribeToBudgets(callback: (budgets: Record<string, number>) => void): () => void {
   const budgetsRef = collection(firestore, BUDGETS_COLLECTION);
@@ -126,8 +126,9 @@ export function subscribeToBudgets(callback: (budgets: Record<string, number>) =
       };
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        if (data && data.month && typeof data.amount === 'number') {
-          budgetMap[data.month] = data.amount;
+        if (data && typeof data.amount === 'number') {
+          const docKey = data.key || docSnap.id;
+          budgetMap[docKey] = data.amount;
         }
       });
       callback(budgetMap);
@@ -164,10 +165,25 @@ export async function deleteExpenseFromCloud(id: string): Promise<void> {
   }
 }
 
-export async function saveBudgetToCloud(month: string, amount: number): Promise<void> {
+export async function saveBudgetToCloud(
+  budgetKey: string, 
+  amount: number, 
+  member?: string, 
+  month?: string
+): Promise<void> {
   try {
-    const docRef = doc(firestore, BUDGETS_COLLECTION, month);
-    await setDoc(docRef, { month, amount, updatedAt: new Date().toISOString() });
+    const docRef = doc(firestore, BUDGETS_COLLECTION, budgetKey);
+    const data: Record<string, any> = {
+      key: budgetKey,
+      month: month || budgetKey,
+      amount,
+      updatedAt: new Date().toISOString()
+    };
+    if (member) {
+      data.member = member;
+    }
+    await setDoc(docRef, data, { merge: true });
+    console.log(`[Firestore] Saved budget ${budgetKey} (₹${amount}) to cloud.`);
   } catch (e) {
     console.error('Failed to sync budget to Cloud Firestore:', e);
   }

@@ -353,15 +353,52 @@ export class DatabaseService {
     return match || null;
   }
 
-  // --- Budgets ---
-  public getBudget(monthStr: string): number {
-    return this.budgets[monthStr] || 20000;
+  // --- Budgets (Personal & Group) ---
+  public getBudget(monthStr: string, member?: MemberName): number {
+    const targetMember = member || this.getCurrentUser();
+    const personalKey = `${targetMember}_${monthStr}`;
+    if (this.budgets[personalKey] !== undefined && this.budgets[personalKey] > 0) {
+      return this.budgets[personalKey];
+    }
+    // Fallback: if month general budget exists, divide by 5, else 5000 default personal budget
+    const groupBudget = this.budgets[monthStr];
+    if (groupBudget && groupBudget > 0) {
+      return Math.round(groupBudget / 5);
+    }
+    return 5000;
   }
 
-  public setBudget(monthStr: string, amount: number): void {
+  public getGroupBudget(monthStr: string): number {
+    if (this.budgets[monthStr] !== undefined && this.budgets[monthStr] > 0) {
+      return this.budgets[monthStr];
+    }
+    // Sum of members' individual budgets if available
+    const members: MemberName[] = ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh'];
+    let sum = 0;
+    let anySet = false;
+    members.forEach(m => {
+      const key = `${m}_${monthStr}`;
+      if (this.budgets[key] !== undefined && this.budgets[key] > 0) {
+        sum += this.budgets[key];
+        anySet = true;
+      }
+    });
+    if (anySet) return sum;
+    return 25000;
+  }
+
+  public setBudget(monthStr: string, amount: number, member?: MemberName): void {
+    const targetMember = member || this.getCurrentUser();
+    const key = `${targetMember}_${monthStr}`;
+    this.budgets[key] = amount;
+    localStorage.setItem(STORAGE_KEY_BUDGETS, JSON.stringify(this.budgets));
+    saveBudgetToCloud(key, amount, targetMember, monthStr).catch(console.warn);
+  }
+
+  public setGroupBudget(monthStr: string, amount: number): void {
     this.budgets[monthStr] = amount;
     localStorage.setItem(STORAGE_KEY_BUDGETS, JSON.stringify(this.budgets));
-    saveBudgetToCloud(monthStr, amount).catch(console.warn);
+    saveBudgetToCloud(monthStr, amount, undefined, monthStr).catch(console.warn);
   }
 
   // --- Reset/Restore ---

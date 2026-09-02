@@ -52,6 +52,7 @@ export const App: React.FC = () => {
   };
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [budgetVersion, setBudgetVersion] = useState<number>(0);
 
   // Modals state
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(() => !db.hasSavedUser());
@@ -132,7 +133,14 @@ export const App: React.FC = () => {
     setActiveTab('history');
   };
 
-  const currentBudget = db.getBudget(selectedMonth === 'all' ? '2026-08' : selectedMonth);
+  const currentBudget = React.useMemo(() => {
+    return db.getBudget(selectedMonth === 'all' ? '2026-08' : selectedMonth, currentMember);
+  }, [selectedMonth, currentMember, budgetVersion]);
+
+  const handleBudgetUpdated = () => {
+    setBudgetVersion(prev => prev + 1);
+    reloadData();
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col md:flex-row antialiased font-sans transition-colors duration-200">
@@ -274,8 +282,10 @@ export const App: React.FC = () => {
         isOpen={isBudgetModalOpen}
         onClose={() => setIsBudgetModalOpen(false)}
         selectedMonth={selectedMonth}
+        currentMember={currentMember}
         currentBudget={currentBudget}
-        onBudgetUpdated={reloadData}
+        availableMonths={availableMonths}
+        onBudgetUpdated={handleBudgetUpdated}
       />
 
       {/* Offline Connectivity Toast & Alerts */}
