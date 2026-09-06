@@ -1,4 +1,4 @@
-export type MemberName = 'Nimal' | 'Etti' | 'Dharan' | 'Sanjai' | 'Santhosh';
+export type MemberName = 'Nimal' | 'Etti' | 'Dharan' | 'Sanjai' | 'Santhosh' | 'Sujhay';
 
 export interface Member {
   id: string;

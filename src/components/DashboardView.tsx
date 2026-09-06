@@ -124,11 +124,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Colors for member charts
   const memberColors: Record<MemberName, string> = {
-    Nimal: '#6366F1', // Indigo/Purple
-    Etti: '#10B981',  // Emerald
-    Dharan: '#F59E0B', // Orange/Amber
+    Nimal: '#6366F1',   // Indigo/Purple
+    Etti: '#10B981',    // Emerald
+    Dharan: '#F59E0B',  // Orange/Amber
     Sanjai: '#3B82F6',  // Blue
-    Santhosh: '#8B5CF6' // Purple/Violet
+    Santhosh: '#8B5CF6',// Purple/Violet
+    Sujhay: '#F43F5E'   // Rose/Red
   };
 
   // Member comparison chart dataset (in group mode)
@@ -230,13 +231,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800' 
                   : 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
               }`}>
-                {viewScope === 'my' ? `👤 Personal Spend (${currentMember})` : '👥 All 5 Friends'}
+                {viewScope === 'my' ? `👤 Personal Spend (${currentMember})` : `👥 All Room Members (${MEMBERS.length})`}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {viewScope === 'my' 
                 ? `Tracking your individual expenses & personal budget for ${selectedMonth === 'all' ? 'all months' : selectedMonth}` 
-                : `Combined outflow & expense distribution for all 5 room members`}
+                : `Combined outflow & expense distribution for all ${MEMBERS.length} room members`}
             </p>
           </div>
         </div>
@@ -263,7 +264,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Room Group (All 5)</span>
+            <span>Room Group (All {MEMBERS.length})</span>
           </button>
         </div>
       </div>

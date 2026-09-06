@@ -47,7 +47,7 @@ export function parseNaturalLanguageExpense(transcript: string): ParsedSpeechExp
     paymentMode = 'Cash';
   } else if (/\b(card|credit card|debit card|credit|debit)\b/i.test(text)) {
     paymentMode = 'Card';
-  } else if (/\b(friend paid|friend|split|someone paid|etti paid|nimal paid|dharan paid|sanjai paid|santhosh paid)\b/i.test(text)) {
+  } else if (/\b(friend paid|friend|split|someone paid|etti paid|nimal paid|dharan paid|sanjai paid|santhosh paid|sujhay paid)\b/i.test(text)) {
     paymentMode = 'Friend Paid';
   }
 

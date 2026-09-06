@@ -2992,5 +2992,60 @@ export const INITIAL_EXPENSES: Expense[] = [
     paymentMode: 'Cash',
     place: 'Vallipuram',
     createdAt: '2026-08-31T16:00:00.000Z'
+  },
+  // ==========================================
+  // SUJHAY'S EXPENSES
+  // ==========================================
+  {
+    id: 'suj-01',
+    member: 'Sujhay',
+    date: '2026-08-15',
+    time: '11:00',
+    category: 'Beverages',
+    itemName: 'Cold Coffee',
+    quantity: 2,
+    amount: 90,
+    paymentMode: 'UPI',
+    place: 'KCP',
+    createdAt: '2026-08-15T11:00:00.000Z'
+  },
+  {
+    id: 'suj-02',
+    member: 'Sujhay',
+    date: '2026-08-20',
+    time: '13:30',
+    category: 'Food',
+    itemName: 'Meals',
+    quantity: 1,
+    amount: 120,
+    paymentMode: 'UPI',
+    place: 'NKL',
+    createdAt: '2026-08-20T13:30:00.000Z'
+  },
+  {
+    id: 'suj-03',
+    member: 'Sujhay',
+    date: '2026-08-28',
+    time: '18:15',
+    category: 'Snacks',
+    itemName: 'Samosa & Tea',
+    quantity: 2,
+    amount: 45,
+    paymentMode: 'Cash',
+    place: 'TOLL',
+    createdAt: '2026-08-28T18:15:00.000Z'
+  },
+  {
+    id: 'suj-04',
+    member: 'Sujhay',
+    date: '2026-09-02',
+    time: '09:00',
+    category: 'Transportation',
+    itemName: 'Bus Ticket',
+    quantity: 1,
+    amount: 35,
+    paymentMode: 'UPI',
+    place: 'KARUR',
+    createdAt: '2026-09-02T09:00:00.000Z'
   }
 ];

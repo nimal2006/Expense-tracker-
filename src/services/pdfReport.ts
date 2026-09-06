@@ -31,7 +31,8 @@ export function generateMonthlyPdf(expenses: Expense[], monthStr: string, previo
     Etti: [16, 185, 129],     // Emerald
     Dharan: [217, 119, 6],    // Amber
     Sanjai: [37, 99, 235],    // Blue
-    Santhosh: [139, 92, 246]  // Purple/Violet
+    Santhosh: [139, 92, 246], // Purple/Violet
+    Sujhay: [244, 63, 94]     // Rose
   };
 
   // ==========================================

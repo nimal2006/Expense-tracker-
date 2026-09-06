@@ -360,10 +360,10 @@ export class DatabaseService {
     if (this.budgets[personalKey] !== undefined && this.budgets[personalKey] > 0) {
       return this.budgets[personalKey];
     }
-    // Fallback: if month general budget exists, divide by 5, else 5000 default personal budget
+    // Fallback: if month general budget exists, divide by members count, else 5000 default personal budget
     const groupBudget = this.budgets[monthStr];
     if (groupBudget && groupBudget > 0) {
-      return Math.round(groupBudget / 5);
+      return Math.round(groupBudget / 6);
     }
     return 5000;
   }
@@ -373,7 +373,7 @@ export class DatabaseService {
       return this.budgets[monthStr];
     }
     // Sum of members' individual budgets if available
-    const members: MemberName[] = ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh'];
+    const members: MemberName[] = ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'];
     let sum = 0;
     let anySet = false;
     members.forEach(m => {

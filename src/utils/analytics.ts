@@ -107,7 +107,8 @@ export function calculateSummaryMetrics(currentExpenses: Expense[], previousMont
     Etti: { amount: 0, count: 0, percentage: 0, prevAmount: 0 },
     Dharan: { amount: 0, count: 0, percentage: 0, prevAmount: 0 },
     Sanjai: { amount: 0, count: 0, percentage: 0, prevAmount: 0 },
-    Santhosh: { amount: 0, count: 0, percentage: 0, prevAmount: 0 }
+    Santhosh: { amount: 0, count: 0, percentage: 0, prevAmount: 0 },
+    Sujhay: { amount: 0, count: 0, percentage: 0, prevAmount: 0 }
   };
 
   currentExpenses.forEach(e => {

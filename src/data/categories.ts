@@ -143,6 +143,13 @@ export const MEMBERS = [
     avatarColor: 'bg-purple-600 text-white',
     badgeBg: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
     avatarLetter: 'St'
+  },
+  {
+    id: 'sujhay',
+    name: 'Sujhay' as const,
+    avatarColor: 'bg-rose-600 text-white',
+    badgeBg: 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+    avatarLetter: 'Sj'
   }
 ];
 

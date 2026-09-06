@@ -204,7 +204,9 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                         : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
                     }`}
                   >
-                    <span>{m.avatar}</span>
+                    <span className={`w-4 h-4 rounded-full ${m.avatarColor} text-[9px] font-bold flex items-center justify-center shrink-0`}>
+                      {m.avatarLetter}
+                    </span>
                     <span>{m.name}</span>
                     {m.name === currentMember && (
                       <span className={`text-[9px] px-1 py-0.2 rounded font-semibold ${isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>

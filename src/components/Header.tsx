@@ -72,7 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden lg:block -mt-0.5 truncate">
-                Continuous shared tracker for Nimal, Etti, Dharan, Sanjai & Santhosh
+                Continuous shared tracker for {MEMBERS.map(m => m.name).join(', ')}
               </p>
             </div>
           </div>
