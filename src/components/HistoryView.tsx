@@ -99,14 +99,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   };
 
   const handleDeleteClick = (expense: Expense) => {
-    if (expense.member !== currentMember) {
-      setToastMessage({
-        type: 'error',
-        text: `RLS Ownership Guard: You cannot delete ${expense.member}'s transactions. Log in as ${expense.member} to delete.`
-      });
-      setTimeout(() => setToastMessage(null), 4000);
-      return;
-    }
     setDeleteConfirmId(expense.id);
   };
 
@@ -114,7 +106,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     if (!deleteConfirmId) return;
     const res = db.deleteExpense(deleteConfirmId, currentMember);
     if (res.success) {
-      setToastMessage({ type: 'success', text: 'Transaction deleted successfully.' });
+      setToastMessage({ type: 'success', text: 'Transaction permanently deleted in real-time.' });
       setDeleteConfirmId(null);
       onRefreshData();
       setTimeout(() => setToastMessage(null), 3000);

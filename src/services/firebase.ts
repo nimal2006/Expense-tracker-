@@ -12,7 +12,6 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Expense } from '../types';
-import { INITIAL_EXPENSES } from '../data/initialExpenses';
 
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -56,30 +55,52 @@ export function cleanForFirestore<T extends Record<string, any>>(obj: T): Record
 }
 
 /**
- * Seed initial expenses if Firestore is completely empty on first launch
+ * Purge sample data from Cloud Firestore if present (e.g. docs with legacy initial IDs)
  */
-export async function seedInitialDataIfEmpty(): Promise<void> {
+export async function purgeSampleDataFromCloud(): Promise<void> {
   try {
     const expensesRef = collection(firestore, EXPENSES_COLLECTION);
     const snapshot = await getDocs(expensesRef);
-    if (snapshot.empty) {
-      console.log('Seeding initial room expenses to Cloud Firestore...');
+    if (!snapshot.empty) {
+      const samplePrefixes = ['nim-', 'ett-', 'dha-', 'san-', 'st-', 'suj-'];
       const batch = writeBatch(firestore);
-      INITIAL_EXPENSES.forEach((exp) => {
-        const docRef = doc(firestore, EXPENSES_COLLECTION, exp.id);
-        batch.set(docRef, cleanForFirestore(exp));
-      });
-      // Seed default budgets
-      const augBudgetRef = doc(firestore, BUDGETS_COLLECTION, '2026-08');
-      batch.set(augBudgetRef, { month: '2026-08', amount: 25000, updatedAt: new Date().toISOString() });
-      const sepBudgetRef = doc(firestore, BUDGETS_COLLECTION, '2026-09');
-      batch.set(sepBudgetRef, { month: '2026-09', amount: 20000, updatedAt: new Date().toISOString() });
+      let count = 0;
       
-      await batch.commit();
-      console.log('Initial room expenses successfully seeded to Cloud Firestore!');
+      snapshot.forEach((docSnap) => {
+        const id = docSnap.id;
+        if (samplePrefixes.some(prefix => id.startsWith(prefix))) {
+          batch.delete(docSnap.ref);
+          count++;
+        }
+      });
+
+      if (count > 0) {
+        await batch.commit();
+        console.log(`Purged ${count} sample expenses from Cloud Firestore.`);
+      }
     }
   } catch (e) {
-    console.warn('Firestore initial seeding note:', e);
+    console.warn('Error purging sample expenses from Firestore:', e);
+  }
+}
+
+/**
+ * Clear all expenses from Cloud Firestore completely
+ */
+export async function clearAllExpensesFromCloud(): Promise<void> {
+  try {
+    const expensesRef = collection(firestore, EXPENSES_COLLECTION);
+    const snapshot = await getDocs(expensesRef);
+    if (!snapshot.empty) {
+      const batch = writeBatch(firestore);
+      snapshot.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+      await batch.commit();
+      console.log('All expenses cleared from Cloud Firestore.');
+    }
+  } catch (e) {
+    console.error('Error clearing expenses from Firestore:', e);
   }
 }
 
@@ -92,18 +113,25 @@ export function subscribeToExpenses(callback: (expenses: Expense[]) => void): ()
     expensesRef,
     (snapshot) => {
       const items: Expense[] = [];
+      const samplePrefixes = ['nim-', 'ett-', 'dha-', 'san-', 'st-', 'suj-'];
+
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Expense;
+        // Filter out sample expense IDs if any remain
         if (data && data.id && data.amount && data.member) {
-          items.push(data);
+          if (!samplePrefixes.some(prefix => data.id.startsWith(prefix))) {
+            items.push(data);
+          }
         }
       });
+
       // Sort newest first
       items.sort((a, b) => {
         const dateA = new Date(`${a.date}T${a.time || '00:00'}:00`).getTime();
         const dateB = new Date(`${b.date}T${b.time || '00:00'}:00`).getTime();
         return dateB - dateA;
       });
+
       callback(items);
     },
     (err) => {

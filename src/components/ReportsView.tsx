@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Expense } from '../types';
+import { MEMBERS } from '../data/categories';
 import { generateMonthlyPdf } from '../services/pdfReport';
 import { calculateSummaryMetrics, calculateWeeklySpending, getTopSpendingItems, formatCurrency } from '../utils/analytics';
 import { db } from '../services/storage';
@@ -15,7 +16,8 @@ import {
   ArrowRight,
   RefreshCw,
   FileSpreadsheet,
-  Layers
+  Layers,
+  Trash2
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -96,11 +98,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     setTimeout(() => setSuccessToast(null), 3000);
   };
 
-  const handleResetToAugust = () => {
-    if (window.confirm('Reset all records to the original August 2026 dataset (229 transactions, ₹22,430)?')) {
-      db.resetToAugustData();
+  const handleClearAllData = () => {
+    if (window.confirm('Are you sure you want to clear all expenses from the database? This cannot be undone.')) {
+      db.clearAllExpenses();
       onRefreshData();
-      setSuccessToast('Database restored to August 2026 truth baseline!');
+      setSuccessToast('All expenses cleared. Starting fresh!');
       setTimeout(() => setSuccessToast(null), 3500);
     }
   };
@@ -178,11 +180,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </motion.button>
 
           <button
-            onClick={handleResetToAugust}
+            onClick={handleClearAllData}
             className="ml-auto text-xs text-slate-400 hover:text-rose-400 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset to August 2026 Baseline</span>
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Clear Database</span>
           </button>
         </div>
       </div>
@@ -236,8 +238,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               Member Share Breakdown
             </h4>
             <div className="space-y-2">
-              {(['Nimal', 'Etti', 'Dharan', 'Sanjai'] as const).map(member => {
-                const data = summary.memberTotals[member];
+              {MEMBERS.map(m => m.name).map(member => {
+                const data = summary.memberTotals[member] || { count: 0, amount: 0, percentage: 0 };
                 return (
                   <div key={member} className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-slate-700 dark:text-slate-300">{member}</span>

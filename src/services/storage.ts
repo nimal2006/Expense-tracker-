@@ -1,7 +1,7 @@
 import { Expense, MemberName, CategoryName, PaymentMode } from '../types';
-import { INITIAL_EXPENSES } from '../data/initialExpenses';
 import { 
-  seedInitialDataIfEmpty, 
+  purgeSampleDataFromCloud,
+  clearAllExpensesFromCloud,
   subscribeToExpenses, 
   subscribeToBudgets, 
   saveExpenseToCloud, 
@@ -13,6 +13,8 @@ const STORAGE_KEY_EXPENSES = 'friends_expense_tracker_db_v3';
 const STORAGE_KEY_CURRENT_USER = 'friends_expense_current_user_v2';
 const STORAGE_KEY_BUDGETS = 'friends_expense_budgets_v2';
 const STORAGE_KEY_USER_PINS = 'friends_expense_pins_v2';
+
+const SAMPLE_PREFIXES = ['nim-', 'ett-', 'dha-', 'san-', 'st-', 'suj-'];
 
 type ListenerCallback = (expenses: Expense[]) => void;
 
@@ -44,28 +46,17 @@ export class DatabaseService {
       const stored = localStorage.getItem(STORAGE_KEY_EXPENSES);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          this.expenses = parsed;
+        if (Array.isArray(parsed)) {
+          // Filter out any legacy sample expenses from local storage
+          this.expenses = parsed.filter(e => !e.id || !SAMPLE_PREFIXES.some(p => e.id.startsWith(p)));
+          this.saveLocalExpenses();
         } else {
-          this.expenses = [...INITIAL_EXPENSES];
+          this.expenses = [];
           this.saveLocalExpenses();
         }
       } else {
-        // Check older storage keys if upgrading
-        const older = localStorage.getItem('friends_expense_tracker_db_v2');
-        if (older) {
-          const parsedOlder = JSON.parse(older);
-          if (Array.isArray(parsedOlder) && parsedOlder.length > 0) {
-            this.expenses = parsedOlder;
-            this.saveLocalExpenses();
-          } else {
-            this.expenses = [...INITIAL_EXPENSES];
-            this.saveLocalExpenses();
-          }
-        } else {
-          this.expenses = [...INITIAL_EXPENSES];
-          this.saveLocalExpenses();
-        }
+        this.expenses = [];
+        this.saveLocalExpenses();
       }
 
       const storedBudgets = localStorage.getItem(STORAGE_KEY_BUDGETS);
@@ -74,7 +65,7 @@ export class DatabaseService {
       }
     } catch (e) {
       console.error('Error initializing local database storage:', e);
-      this.expenses = [...INITIAL_EXPENSES];
+      this.expenses = [];
     }
   }
 
@@ -82,37 +73,28 @@ export class DatabaseService {
     if (this.hasInitializedCloudSync) return;
     this.hasInitializedCloudSync = true;
 
-    // 1. Seed cloud data if cloud is empty on fresh database
-    seedInitialDataIfEmpty().catch(console.warn);
+    // 1. Purge any legacy sample data from cloud database
+    purgeSampleDataFromCloud().catch(console.warn);
 
-    // 2. Real-time listener for cloud expenses
+    // 2. Real-time authoritative listener for cloud expenses
     subscribeToExpenses((cloudExpenses) => {
       this.isCloudConnected = true;
-      if (cloudExpenses && cloudExpenses.length > 0) {
-        // Merge cloud expenses with any local-only entries so nothing gets lost
-        const cloudIds = new Set(cloudExpenses.map(e => e.id));
-        const localOnly = this.expenses.filter(e => !cloudIds.has(e.id));
 
-        // Upload any local-only expenses to cloud
-        if (localOnly.length > 0) {
-          console.log(`Syncing ${localOnly.length} local offline expenses to Cloud Firestore...`);
-          localOnly.forEach(exp => {
-            saveExpenseToCloud(exp).catch(console.warn);
-          });
-        }
+      // Filter out any sample expenses that might come from cloud
+      const cleanCloudExpenses = (cloudExpenses || []).filter(
+        e => !e.id || !SAMPLE_PREFIXES.some(p => e.id.startsWith(p))
+      );
 
-        // Combine and sort
-        const combined = [...cloudExpenses, ...localOnly];
-        combined.sort((a, b) => {
-          const dateA = new Date(`${a.date}T${a.time || '00:00'}:00`).getTime();
-          const dateB = new Date(`${b.date}T${b.time || '00:00'}:00`).getTime();
-          return dateB - dateA;
-        });
+      // Sort newest first
+      cleanCloudExpenses.sort((a, b) => {
+        const dateA = new Date(`${a.date}T${a.time || '00:00'}:00`).getTime();
+        const dateB = new Date(`${b.date}T${b.time || '00:00'}:00`).getTime();
+        return dateB - dateA;
+      });
 
-        this.expenses = combined;
-        this.saveLocalExpenses();
-        this.notifyListeners();
-      }
+      this.expenses = cleanCloudExpenses;
+      this.saveLocalExpenses();
+      this.notifyListeners();
     });
 
     // 3. Real-time listener for cloud budgets
@@ -157,12 +139,12 @@ export class DatabaseService {
   // --- Auth & Member Session ---
   public hasSavedUser(): boolean {
     const user = localStorage.getItem(STORAGE_KEY_CURRENT_USER);
-    return !!user && ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh'].includes(user);
+    return !!user && ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'].includes(user);
   }
 
   public getCurrentUser(): MemberName {
     const user = localStorage.getItem(STORAGE_KEY_CURRENT_USER) as MemberName;
-    if (user && ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh'].includes(user)) {
+    if (user && ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'].includes(user)) {
       return user;
     }
     return 'Nimal'; // Fallback default
@@ -191,7 +173,7 @@ export class DatabaseService {
     }
   }
 
-  // --- Expense CRUD & Row-Level Ownership ---
+  // --- Expense CRUD & Real-Time Deletion ---
   public getAllExpenses(): Expense[] {
     return [...this.expenses].sort((a, b) => {
       // Sort newest first
@@ -215,7 +197,6 @@ export class DatabaseService {
     const now = new Date();
     const id = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     
-    // Clean fields so there are no undefined values
     const newExpense: Expense = {
       id,
       member: data.member,
@@ -239,12 +220,12 @@ export class DatabaseService {
       newExpense.notes = data.notes.trim();
     }
 
-    // Immediately update in-memory array & local storage
+    // Update in-memory array & local storage
     this.expenses.unshift(newExpense);
     this.saveLocalExpenses();
     this.notifyListeners();
 
-    // Sync to Cloud Firestore instantly
+    // Sync to Cloud Firestore in real time
     saveExpenseToCloud(newExpense).catch((err) => {
       console.warn('Firestore cloud sync pending or offline:', err);
     });
@@ -263,13 +244,6 @@ export class DatabaseService {
     }
 
     const existing = this.expenses[index];
-    // Row-level ownership validation: only author can edit
-    if (existing.member !== currentMember) {
-      return {
-        success: false,
-        error: `Security Rule Violation: You can only edit your own expenses. This entry was created by ${existing.member}.`
-      };
-    }
 
     if (updates.amount !== undefined && (isNaN(Number(updates.amount)) || Number(updates.amount) <= 0)) {
       return { success: false, error: 'Please enter a valid amount greater than 0.' };
@@ -282,7 +256,6 @@ export class DatabaseService {
       updatedAt: new Date().toISOString()
     };
 
-    // Clean up empty/whitespace fields
     if (updates.itemName !== undefined) {
       if (updates.itemName && updates.itemName.trim()) {
         updated.itemName = updates.itemName.trim();
@@ -302,7 +275,7 @@ export class DatabaseService {
     this.saveLocalExpenses();
     this.notifyListeners();
 
-    // Sync update to Cloud Firestore
+    // Sync update to Cloud Firestore in real time
     saveExpenseToCloud(updated).catch((err) => {
       console.warn('Firestore cloud update note:', err);
     });
@@ -310,31 +283,32 @@ export class DatabaseService {
     return { success: true, expense: updated };
   }
 
-  public deleteExpense(id: string, currentMember: MemberName): { success: boolean; error?: string } {
+  public deleteExpense(id: string, currentMember?: MemberName): { success: boolean; error?: string } {
     const index = this.expenses.findIndex(e => e.id === id);
     if (index === -1) {
       return { success: false, error: 'Expense record not found.' };
     }
 
-    const existing = this.expenses[index];
-    // Row-level ownership validation: only author can delete
-    if (existing.member !== currentMember) {
-      return {
-        success: false,
-        error: `Security Rule Violation: You can only delete your own expenses. This entry belongs to ${existing.member}.`
-      };
-    }
-
+    // Delete locally immediately
     this.expenses.splice(index, 1);
     this.saveLocalExpenses();
     this.notifyListeners();
 
-    // Delete from Cloud Firestore
+    // Delete permanently from Cloud Firestore
     deleteExpenseFromCloud(id).catch((err) => {
       console.warn('Firestore cloud delete note:', err);
     });
 
     return { success: true };
+  }
+
+  public clearAllExpenses(): void {
+    this.expenses = [];
+    this.saveLocalExpenses();
+    this.notifyListeners();
+    clearAllExpensesFromCloud().catch((err) => {
+      console.warn('Error clearing expenses from Cloud Firestore:', err);
+    });
   }
 
   // Duplicate entry detector
@@ -360,7 +334,6 @@ export class DatabaseService {
     if (this.budgets[personalKey] !== undefined && this.budgets[personalKey] > 0) {
       return this.budgets[personalKey];
     }
-    // Fallback: if month general budget exists, divide by members count, else 5000 default personal budget
     const groupBudget = this.budgets[monthStr];
     if (groupBudget && groupBudget > 0) {
       return Math.round(groupBudget / 6);
@@ -372,7 +345,6 @@ export class DatabaseService {
     if (this.budgets[monthStr] !== undefined && this.budgets[monthStr] > 0) {
       return this.budgets[monthStr];
     }
-    // Sum of members' individual budgets if available
     const members: MemberName[] = ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'];
     let sum = 0;
     let anySet = false;
@@ -399,16 +371,6 @@ export class DatabaseService {
     this.budgets[monthStr] = amount;
     localStorage.setItem(STORAGE_KEY_BUDGETS, JSON.stringify(this.budgets));
     saveBudgetToCloud(monthStr, amount, undefined, monthStr).catch(console.warn);
-  }
-
-  // --- Reset/Restore ---
-  public resetToAugustData(): void {
-    this.expenses = [...INITIAL_EXPENSES];
-    this.saveLocalExpenses();
-    this.notifyListeners();
-    INITIAL_EXPENSES.forEach(exp => {
-      saveExpenseToCloud(exp).catch(console.warn);
-    });
   }
 
   public importJsonExpenses(jsonData: Expense[]): { success: boolean; count: number; error?: string } {
