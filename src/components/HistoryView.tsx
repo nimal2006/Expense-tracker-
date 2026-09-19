@@ -28,6 +28,9 @@ interface HistoryViewProps {
   onOpenEditModal: (expense: Expense) => void;
   initialCategoryFilter?: string;
   initialMemberFilter?: MemberName;
+  selectedMonth?: string;
+  onSelectMonth?: (month: string) => void;
+  availableMonths?: { value: string; label: string }[];
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -36,11 +39,24 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onRefreshData,
   onOpenEditModal,
   initialCategoryFilter,
-  initialMemberFilter
+  initialMemberFilter,
+  selectedMonth: propSelectedMonth,
+  onSelectMonth,
+  availableMonths
 }) => {
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [localSelectedMonth, setLocalSelectedMonth] = useState<string>('all');
+  const activeMonth = propSelectedMonth !== undefined ? propSelectedMonth : localSelectedMonth;
+
+  const handleMonthChange = (month: string) => {
+    if (onSelectMonth) {
+      onSelectMonth(month);
+    } else {
+      setLocalSelectedMonth(month);
+    }
+  };
+
   const [selectedMember, setSelectedMember] = useState<MemberName | 'All'>(initialMemberFilter || 'All');
   const [selectedCategory, setSelectedCategory] = useState<CategoryName | 'All'>((initialCategoryFilter as CategoryName) || 'All');
   const [selectedPayment, setSelectedPayment] = useState<PaymentMode | 'All'>('All');
@@ -71,9 +87,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     paymentFilter = 'Cash';
   }
 
+  // Unified Filter Pipeline:
+  // All Transactions → Selected Month → User Filter → Quick Filter → Search → Sort → Display
   const filtered = filterExpenses(
     expenses,
-    selectedMonth,
+    activeMonth,
     'all',
     memberFilter,
     selectedCategory,
@@ -82,7 +100,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     placeFilter,
     startDateFilter,
     endDateFilter
-  );
+  ).sort((a, b) => {
+    // Sort newest first
+    const dtA = `${a.date}T${a.time || '00:00'}:00`;
+    const dtB = `${b.date}T${b.time || '00:00'}:00`;
+    return new Date(dtB).getTime() - new Date(dtA).getTime();
+  });
 
   const filteredSum = filtered.reduce((s, e) => s + e.amount, 0);
 
@@ -118,7 +141,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
   const clearAllFilters = () => {
     setSearchQuery('');
-    setSelectedMonth('all');
+    handleMonthChange('all');
     setSelectedMember('All');
     setSelectedCategory('All');
     setSelectedPayment('All');
@@ -210,7 +233,29 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
         {/* Advanced Filters Drawer */}
         {showAdvancedFilters && (
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-150">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2 duration-150">
+            {/* Month Filter */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-400 block mb-1">Month Period</label>
+              <select
+                value={activeMonth}
+                onChange={(e) => handleMonthChange(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-semibold p-2 rounded-xl border border-slate-200 dark:border-slate-700"
+              >
+                <option value="all">All Months</option>
+                {availableMonths ? (
+                  availableMonths.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="2026-09">September 2026</option>
+                    <option value="2026-08">August 2026</option>
+                  </>
+                )}
+              </select>
+            </div>
+
             {/* Member Filter */}
             <div>
               <label className="text-[11px] font-bold text-slate-400 block mb-1">Member</label>

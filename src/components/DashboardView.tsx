@@ -10,7 +10,8 @@ import {
   generateSmartInsights, 
   formatCurrency, 
   formatExactCurrency,
-  getLocalDateString
+  getLocalDateString,
+  filterExpenses
 } from '../utils/analytics';
 import { db } from '../services/storage';
 import {
@@ -76,10 +77,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // View Scope: 'my' (individual personal mode) vs 'group' (all 5 friends combined)
   const [viewScope, setViewScope] = useState<'my' | 'group'>('my');
 
-  // Filter expenses for current selected month
-  const currentMonthAllExpenses = selectedMonth === 'all'
-    ? expenses
-    : expenses.filter(e => e.date.startsWith(selectedMonth));
+  // Filter expenses for current selected month with robust date range filtering
+  const currentMonthAllExpenses = filterExpenses(expenses, selectedMonth);
 
   // Determine previous month for comparison
   let previousMonthStr = '2026-08';
@@ -88,7 +87,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   } else if (selectedMonth === '2026-08') {
     previousMonthStr = '2026-07';
   }
-  const previousMonthAllExpenses = expenses.filter(e => e.date.startsWith(previousMonthStr));
+  const previousMonthAllExpenses = filterExpenses(expenses, previousMonthStr);
 
   // Group Summary across all friends
   const groupSummary = calculateSummaryMetrics(currentMonthAllExpenses, previousMonthAllExpenses);

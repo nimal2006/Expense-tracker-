@@ -1,4 +1,5 @@
 import { Expense, MemberName, CategoryName, PaymentMode } from '../types';
+import { AUGUST_2026_EXPENSES } from '../data/august2026Data';
 import { 
   purgeSampleDataFromCloud,
   clearAllExpensesFromCloud,
@@ -13,8 +14,14 @@ const STORAGE_KEY_EXPENSES = 'friends_expense_tracker_db_v3';
 const STORAGE_KEY_CURRENT_USER = 'friends_expense_current_user_v2';
 const STORAGE_KEY_BUDGETS = 'friends_expense_budgets_v2';
 const STORAGE_KEY_USER_PINS = 'friends_expense_pins_v2';
+const STORAGE_KEY_AUG26_SEEDED = 'friends_expense_aug26_seeded_v1';
 
 const SAMPLE_PREFIXES = ['nim-', 'ett-', 'dha-', 'san-', 'st-', 'suj-'];
+
+export function generateExpenseSignature(e: { member: string; date: string; amount: number; category: string; itemName?: string; paymentMode: string; place?: string }): string {
+  const norm = (s?: string) => (s || '').trim().toLowerCase();
+  return `${norm(e.member)}|${e.date}|${Number(e.amount).toFixed(2)}|${norm(e.category)}|${norm(e.itemName)}|${norm(e.paymentMode)}|${norm(e.place)}`;
+}
 
 type ListenerCallback = (expenses: Expense[]) => void;
 
@@ -59,6 +66,9 @@ export class DatabaseService {
         this.saveLocalExpenses();
       }
 
+      // Ensure historical August 2026 data is seeded idempotently
+      this.seedAugust2026DataIfMissing();
+
       const storedBudgets = localStorage.getItem(STORAGE_KEY_BUDGETS);
       if (storedBudgets) {
         this.budgets = { ...this.budgets, ...JSON.parse(storedBudgets) };
@@ -66,6 +76,44 @@ export class DatabaseService {
     } catch (e) {
       console.error('Error initializing local database storage:', e);
       this.expenses = [];
+    }
+  }
+
+  public seedAugust2026DataIfMissing(): { added: number } {
+    try {
+      const existingIds = new Set<string>();
+      const existingSigs = new Set<string>();
+
+      this.expenses.forEach(e => {
+        if (e.id) existingIds.add(e.id);
+        existingSigs.add(generateExpenseSignature(e));
+      });
+
+      const missing: Expense[] = [];
+      for (const item of AUGUST_2026_EXPENSES) {
+        const sig = generateExpenseSignature(item);
+        if (!existingIds.has(item.id) && !existingSigs.has(sig)) {
+          missing.push(item);
+          existingIds.add(item.id);
+          existingSigs.add(sig);
+        }
+      }
+
+      if (missing.length > 0) {
+        this.expenses = [...this.expenses, ...missing];
+        this.saveLocalExpenses();
+        this.notifyListeners();
+        // Sync to Firestore in background without blocking
+        missing.forEach(exp => {
+          saveExpenseToCloud(exp).catch(err => console.warn('Cloud sync error for historical item:', err));
+        });
+      }
+
+      localStorage.setItem(STORAGE_KEY_AUG26_SEEDED, 'true');
+      return { added: missing.length };
+    } catch (err) {
+      console.error('Error seeding August 2026 data:', err);
+      return { added: 0 };
     }
   }
 
@@ -93,6 +141,8 @@ export class DatabaseService {
       });
 
       this.expenses = cleanCloudExpenses;
+      // Also ensure August 2026 historical data is merged if cloud was empty
+      this.seedAugust2026DataIfMissing();
       this.saveLocalExpenses();
       this.notifyListeners();
     });

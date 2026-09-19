@@ -12,8 +12,13 @@ export interface Member {
 export type CategoryName =
   | 'Food'
   | 'Snacks'
+  | 'Tea/Coffee'
+  | 'Cool Drinks'
   | 'Beverages'
+  | 'Cigarette'
+  | 'Hans'
   | 'Tobacco Products'
+  | 'Liquor'
   | 'Alcohol'
   | 'Transportation'
   | 'Fuel'
@@ -21,6 +26,8 @@ export type CategoryName =
   | 'Education/Fees'
   | 'Personal Care'
   | 'Entertainment'
+  | 'Shopping'
+  | 'Medical'
   | 'Others';
 
 export type PaymentMode = 'UPI' | 'Cash' | 'Card' | 'Friend Paid';

@@ -27,12 +27,44 @@ export const CATEGORIES: CategoryMeta[] = [
     commonItems: ['Samosa', 'Egg puffs', 'Sweet puffs', 'Jam bun', 'Ice cream', 'Smoodh', 'Kitkat', 'Chew bites', 'Peanut Candy', 'Bonda', 'Roll']
   },
   {
+    name: 'Tea/Coffee',
+    color: '#06B6D4', // Cyan
+    bgColor: 'bg-cyan-50 dark:bg-cyan-950/40',
+    textColor: 'text-cyan-600 dark:text-cyan-400',
+    iconName: 'Coffee',
+    commonItems: ['Tea', 'Coffee', 'Tea,Vada', 'Tea coffee']
+  },
+  {
+    name: 'Cool Drinks',
+    color: '#0EA5E9', // Sky
+    bgColor: 'bg-sky-50 dark:bg-sky-950/40',
+    textColor: 'text-sky-600 dark:text-sky-400',
+    iconName: 'Wine',
+    commonItems: ['Waterbottle', 'Rosemilk', 'Paneer soda', 'Milkshake', 'Goli soda', 'Smooth', 'Slice']
+  },
+  {
     name: 'Beverages',
     color: '#06B6D4', // Cyan
     bgColor: 'bg-cyan-50 dark:bg-cyan-950/40',
     textColor: 'text-cyan-600 dark:text-cyan-400',
     iconName: 'Coffee',
     commonItems: ['Tea', 'Coffee', 'Juice', 'Milkshake', 'Soft Drinks', 'Waterbottle', 'Rosemilk', 'Paneer soda', 'Goli soda', 'Buttermilk']
+  },
+  {
+    name: 'Cigarette',
+    color: '#8B5CF6', // Purple
+    bgColor: 'bg-purple-50 dark:bg-purple-950/40',
+    textColor: 'text-purple-600 dark:text-purple-400',
+    iconName: 'Flame',
+    commonItems: ['Mint', 'Kings', 'Wave', 'Gold Filter']
+  },
+  {
+    name: 'Hans',
+    color: '#A855F7', // Purple/Violet
+    bgColor: 'bg-purple-50 dark:bg-purple-950/40',
+    textColor: 'text-purple-600 dark:text-purple-400',
+    iconName: 'Flame',
+    commonItems: ['Hans', 'Boi kadai', 'Don', 'CL']
   },
   {
     name: 'Tobacco Products',
@@ -43,12 +75,36 @@ export const CATEGORIES: CategoryMeta[] = [
     commonItems: ['Coolip', 'Hans', 'Cigarette', 'Mint', 'Kings', 'Wave', 'Gold Filter', 'CL', 'Don']
   },
   {
+    name: 'Liquor',
+    color: '#EC4899', // Pink
+    bgColor: 'bg-pink-50 dark:bg-pink-950/40',
+    textColor: 'text-pink-600 dark:text-pink-400',
+    iconName: 'Wine',
+    commonItems: ['Beer', 'British', 'Bacadi']
+  },
+  {
     name: 'Alcohol',
     color: '#EC4899', // Pink
     bgColor: 'bg-pink-50 dark:bg-pink-950/40',
     textColor: 'text-pink-600 dark:text-pink-400',
     iconName: 'Wine',
     commonItems: ['Beer', 'British', 'Bacadi', 'Liquor']
+  },
+  {
+    name: 'Shopping',
+    color: '#F43F5E', // Rose
+    bgColor: 'bg-rose-50 dark:bg-rose-950/40',
+    textColor: 'text-rose-600 dark:text-rose-400',
+    iconName: 'ShoppingBag',
+    commonItems: ['Clothes', 'Shoes', 'Electronics']
+  },
+  {
+    name: 'Medical',
+    color: '#EF4444', // Red
+    bgColor: 'bg-red-50 dark:bg-red-950/40',
+    textColor: 'text-red-600 dark:text-red-400',
+    iconName: 'HeartPulse',
+    commonItems: ['Medicine', 'Doctor', 'Pharmacy']
   },
   {
     name: 'Transportation',

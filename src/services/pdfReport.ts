@@ -2,23 +2,49 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Expense, MemberName } from '../types';
 import { MEMBERS } from '../data/categories';
-import { calculateSummaryMetrics, calculateWeeklySpending, getTopSpendingItems, formatCurrency } from '../utils/analytics';
+import { calculateSummaryMetrics, calculateWeeklySpending, getTopSpendingItems, formatCurrency, filterExpenses } from '../utils/analytics';
 
-export function generateMonthlyPdf(expenses: Expense[], monthStr: string, previousExpenses: Expense[] = []): jsPDF {
+export function generateMonthlyPdf(
+  expenses: Expense[],
+  monthStr: string,
+  previousExpenses: Expense[] = [],
+  targetMember?: MemberName | 'all'
+): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4'
   });
 
-  const [yearStr, monthNumStr] = monthStr.split('-');
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const monthName = monthNames[parseInt(monthNumStr, 10) - 1] || monthStr;
-  const periodTitle = `${monthName} ${yearStr}`;
+  const isPersonal = !!targetMember && targetMember !== 'all';
+  const displayMember = isPersonal ? targetMember : null;
 
-  const currentMonthExpenses = expenses.filter(e => e.date.startsWith(monthStr));
-  const summary = calculateSummaryMetrics(currentMonthExpenses, previousExpenses);
-  const weekly = calculateWeeklySpending(currentMonthExpenses, monthStr);
+  let periodTitle = monthStr;
+  if (monthStr === 'all') {
+    periodTitle = 'All-Time';
+  } else {
+    const [yearStr, monthNumStr] = monthStr.split('-');
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthName = monthNames[parseInt(monthNumStr, 10) - 1] || monthStr;
+    periodTitle = `${monthName} ${yearStr}`;
+  }
+
+  const currentMonthExpenses = filterExpenses(
+    expenses,
+    monthStr,
+    undefined,
+    displayMember || 'All'
+  );
+
+  const prevFilteredExpenses = filterExpenses(
+    previousExpenses,
+    undefined,
+    undefined,
+    displayMember || 'All'
+  );
+
+  const summary = calculateSummaryMetrics(currentMonthExpenses, prevFilteredExpenses);
+  const weekly = calculateWeeklySpending(currentMonthExpenses, monthStr === 'all' ? '2026-08' : monthStr);
   const topItems = getTopSpendingItems(currentMonthExpenses, 10);
 
   // Color Palette
@@ -45,23 +71,26 @@ export function generateMonthlyPdf(expenses: Expense[], monthStr: string, previo
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.text('FRIENDS EXPENSE TRACKER', 14, 15);
 
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Monthly Expense Report — ${periodTitle}`, 140, 15);
+  const bannerRightText = isPersonal
+    ? `${displayMember}’s Report — ${periodTitle}`
+    : `Monthly Report — ${periodTitle}`;
+  doc.text(bannerRightText, 196, 15, { align: 'right' });
 
   // 2. Overview Summary Box
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.text('Executive Summary', 14, 34);
+  doc.text(isPersonal ? `${displayMember}’s Summary` : 'Executive Summary', 14, 34);
 
   // Summary Metrics Table
   const summaryRows = [
     [
-      { content: 'Total Expense', styles: { fontStyle: 'bold' as const } },
+      { content: isPersonal ? 'Personal Expense' : 'Total Expense', styles: { fontStyle: 'bold' as const } },
       formatCurrency(summary.totalExpense),
       { content: 'Total Transactions', styles: { fontStyle: 'bold' as const } },
       `${summary.totalTransactions}`
@@ -94,26 +123,38 @@ export function generateMonthlyPdf(expenses: Expense[], monthStr: string, previo
     }
   });
 
-  // 3. Member Spending Breakdown Table
+  // 3. Member Spending Breakdown Table (or Personal Category Highlights)
   const finalY1 = (doc as any).lastAutoTable.finalY || 60;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
-  doc.text('Member Contributions & Distribution', 14, finalY1 + 8);
+  doc.text(isPersonal ? `${displayMember}’s Key Categories` : 'Member Contributions & Distribution', 14, finalY1 + 8);
 
-  const memberTableData = MEMBERS.map(member => {
-    const data = summary.memberTotals[member.name] || { amount: 0, percentage: 0, count: 0 };
-    return [
-      member.name,
-      formatCurrency(data.amount),
-      `${data.percentage}%`,
-      `${data.count}`,
-      data.count > 0 ? formatCurrency(Math.round(data.amount / data.count)) : '₹0'
-    ];
-  });
+  const memberTableHead = isPersonal
+    ? [['Category', 'Amount', '% of Personal Spend', 'Transactions', 'Avg / Txn']]
+    : [['Member', 'Total Spent', '% of Group', 'Transactions', 'Avg / Txn']];
+
+  const memberTableData = isPersonal
+    ? summary.categoryArray.slice(0, 6).map(c => [
+        c.category,
+        formatCurrency(c.amount),
+        `${c.percentage}%`,
+        `${c.count}`,
+        c.count > 0 ? formatCurrency(Math.round(c.amount / c.count)) : '₹0'
+      ])
+    : MEMBERS.map(member => {
+        const data = summary.memberTotals[member.name] || { amount: 0, percentage: 0, count: 0 };
+        return [
+          member.name,
+          formatCurrency(data.amount),
+          `${data.percentage}%`,
+          `${data.count}`,
+          data.count > 0 ? formatCurrency(Math.round(data.amount / data.count)) : '₹0'
+        ];
+      });
 
   autoTable(doc, {
     startY: finalY1 + 12,
-    head: [['Member', 'Total Spent', '% of Group', 'Transactions', 'Avg / Txn']],
+    head: memberTableHead,
     body: memberTableData,
     theme: 'striped',
     headStyles: { fillColor: brandIndigo, textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -210,11 +251,19 @@ export function generateMonthlyPdf(expenses: Expense[], monthStr: string, previo
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
-  doc.text(`Classified Member Transaction Ledgers — ${periodTitle}`, 14, 11);
+  doc.text(
+    isPersonal ? `${displayMember}’s Transaction Ledger — ${periodTitle}` : `Classified Member Transaction Ledgers — ${periodTitle}`,
+    14,
+    11
+  );
 
   let currentSectionY = 24;
 
-  MEMBERS.forEach((member) => {
+  const targetMembers = isPersonal
+    ? MEMBERS.filter(m => m.name === targetMember)
+    : MEMBERS;
+
+  targetMembers.forEach((member) => {
     // Filter this member's expenses and sort chronologically by date
     const memberExpenses = currentMonthExpenses
       .filter(e => e.member === member.name)

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Expense, MemberName } from '../types';
 import { MEMBERS, CATEGORIES } from '../data/categories';
-import { formatCurrency, formatExactCurrency } from '../utils/analytics';
+import { formatCurrency, formatExactCurrency, filterExpenses } from '../utils/analytics';
 import { 
   Users, 
   TrendingUp, 
@@ -30,9 +30,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
 }) => {
   const [activeMemberTab, setActiveMemberTab] = useState<MemberName>(currentMember);
 
-  const monthExpenses = selectedMonth === 'all'
-    ? expenses
-    : expenses.filter(e => e.date.startsWith(selectedMonth));
+  const monthExpenses = filterExpenses(expenses, selectedMonth);
 
   const totalGroupExpense = monthExpenses.reduce((s, e) => s + e.amount, 0);
 
@@ -73,8 +71,8 @@ export const MembersView: React.FC<MembersViewProps> = ({
       className="space-y-6 pb-16 max-w-6xl mx-auto"
     >
       
-      {/* Member Summary Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      {/* Member Summary Cards Grid - 6 members */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         {memberStats.map(m => {
           const isSelected = activeMemberTab === m.name;
           return (

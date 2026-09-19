@@ -216,6 +216,9 @@ export const App: React.FC = () => {
                 <HistoryView
                   expenses={expenses}
                   currentMember={currentMember}
+                  selectedMonth={selectedMonth}
+                  onSelectMonth={setSelectedMonth}
+                  availableMonths={availableMonths}
                   onRefreshData={reloadData}
                   onOpenEditModal={handleOpenEditModal}
                   initialCategoryFilter={initialCategoryFilter}
@@ -240,6 +243,7 @@ export const App: React.FC = () => {
                   selectedMonth={selectedMonth}
                   onSelectMonth={setSelectedMonth}
                   availableMonths={availableMonths}
+                  currentMember={currentMember}
                   onRefreshData={reloadData}
                 />
               )}

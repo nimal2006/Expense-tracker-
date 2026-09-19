@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Expense } from '../types';
+import { Expense, MemberName } from '../types';
 import { MEMBERS } from '../data/categories';
 import { generateMonthlyPdf } from '../services/pdfReport';
-import { calculateSummaryMetrics, calculateWeeklySpending, getTopSpendingItems, formatCurrency } from '../utils/analytics';
+import { calculateSummaryMetrics, calculateWeeklySpending, getTopSpendingItems, formatCurrency, filterExpenses } from '../utils/analytics';
 import { db } from '../services/storage';
 import {
   FileText,
@@ -17,7 +17,8 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Layers,
-  Trash2
+  User,
+  Users
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -25,6 +26,7 @@ interface ReportsViewProps {
   selectedMonth: string;
   onSelectMonth: (month: string) => void;
   availableMonths: { value: string; label: string }[];
+  currentMember?: MemberName;
   onRefreshData: () => void;
 }
 
@@ -33,15 +35,32 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   selectedMonth,
   onSelectMonth,
   availableMonths,
+  currentMember = 'Nimal',
   onRefreshData
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [exportScope, setExportScope] = useState<'group' | MemberName>('group');
 
   const reportMonthStr = selectedMonth === 'all' ? '2026-08' : selectedMonth;
-  const currentExpenses = expenses.filter(e => e.date.startsWith(reportMonthStr));
+  const isPersonal = exportScope !== 'group';
+  const targetMember = isPersonal ? exportScope : undefined;
+
+  // Filter current expenses using unified pipeline
+  const currentExpenses = filterExpenses(
+    expenses,
+    selectedMonth,
+    undefined,
+    targetMember || 'All'
+  );
+
   const previousMonthStr = reportMonthStr === '2026-09' ? '2026-08' : '2026-07';
-  const previousExpenses = expenses.filter(e => e.date.startsWith(previousMonthStr));
+  const previousExpenses = filterExpenses(
+    expenses,
+    previousMonthStr,
+    undefined,
+    targetMember || 'All'
+  );
 
   const summary = calculateSummaryMetrics(currentExpenses, previousExpenses);
   const topItems = getTopSpendingItems(currentExpenses, 10);
@@ -49,9 +68,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const handleDownloadPdf = () => {
     setIsGenerating(true);
     try {
-      const doc = generateMonthlyPdf(expenses, reportMonthStr, previousExpenses);
-      doc.save(`Friends_Expense_Report_${reportMonthStr}.pdf`);
-      setSuccessToast(`PDF report for ${reportMonthStr} generated and downloaded!`);
+      const doc = generateMonthlyPdf(expenses, selectedMonth, previousExpenses, targetMember || 'all');
+      const filename = isPersonal
+        ? `Friends_${targetMember}_Report_${reportMonthStr}.pdf`
+        : `Friends_Group_Report_${reportMonthStr}.pdf`;
+      doc.save(filename);
+      setSuccessToast(`PDF report (${isPersonal ? `${targetMember}'s Personal` : 'Group'}) downloaded!`);
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (e: any) {
       console.error('Error generating PDF:', e);
@@ -78,33 +100,30 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Friends_Expenses_${reportMonthStr}.csv`);
+    const filename = isPersonal
+      ? `Friends_${targetMember}_Expenses_${reportMonthStr}.csv`
+      : `Friends_Group_Expenses_${reportMonthStr}.csv`;
+    link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setSuccessToast(`CSV exported for ${reportMonthStr}!`);
+    setSuccessToast(`CSV exported (${isPersonal ? `${targetMember}'s Personal` : 'Group'}) for ${reportMonthStr}!`);
     setTimeout(() => setSuccessToast(null), 3000);
   };
 
   const handleExportJson = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(expenses, null, 2));
+    const exportData = isPersonal
+      ? expenses.filter(e => e.member === targetMember)
+      : expenses;
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
     downloadAnchor.setAttribute('download', `friends_expenses_backup_${new Date().toISOString().substring(0, 10)}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    setSuccessToast('Full database JSON backup downloaded!');
+    setSuccessToast('Database JSON backup downloaded!');
     setTimeout(() => setSuccessToast(null), 3000);
-  };
-
-  const handleClearAllData = () => {
-    if (window.confirm('Are you sure you want to clear all expenses from the database? This cannot be undone.')) {
-      db.clearAllExpenses();
-      onRefreshData();
-      setSuccessToast('All expenses cleared. Starting fresh!');
-      setTimeout(() => setSuccessToast(null), 3500);
-    }
   };
 
   return (
@@ -126,17 +145,47 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <h2 className="text-xl font-bold tracking-tight">Monthly Expense Reports</h2>
             </div>
             <p className="text-xs text-slate-300">
-              Generate pixel-perfect PDF reports with member-classified transaction ledgers and analytical summaries.
+              Generate pixel-perfect PDF reports and CSV exports with member-classified transaction ledgers.
             </p>
           </div>
 
-          {/* Month Selector */}
-          <div className="flex items-center gap-2">
+          {/* Controls: Month and Scope */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Scope Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-2xl border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setExportScope('group')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  exportScope === 'group'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Group</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExportScope(currentMember)}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  exportScope === currentMember
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>My ({currentMember})</span>
+              </button>
+            </div>
+
+            {/* Month Selector */}
             <select
               value={selectedMonth}
               onChange={(e) => onSelectMonth(e.target.value)}
               className="bg-slate-800 text-white font-bold text-xs sm:text-sm px-3.5 py-2.5 rounded-2xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
+              <option value="all">All Months</option>
               {availableMonths.map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.label}
@@ -156,7 +205,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            <span>{isGenerating ? 'Generating PDF...' : `Download PDF Report (${reportMonthStr})`}</span>
+            <span>
+              {isGenerating 
+                ? 'Generating PDF...' 
+                : isPersonal 
+                ? `Download ${targetMember}'s PDF (${reportMonthStr})` 
+                : `Download Group PDF (${reportMonthStr})`}
+            </span>
           </motion.button>
 
           <motion.button
@@ -166,7 +221,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold border border-slate-700 transition-all cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            <span>Export CSV</span>
+            <span>Export CSV {isPersonal ? `(${targetMember})` : '(Group)'}</span>
           </motion.button>
 
           <motion.button
@@ -178,14 +233,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <Layers className="w-4 h-4 text-amber-400" />
             <span>JSON Backup</span>
           </motion.button>
-
-          <button
-            onClick={handleClearAllData}
-            className="ml-auto text-xs text-slate-400 hover:text-rose-400 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Clear Database</span>
-          </button>
         </div>
       </div>
 
@@ -203,12 +250,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         {/* Card 1: Executive Summary */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>📋 Executive Summary ({reportMonthStr})</span>
+            <span>📋 {isPersonal ? `${targetMember}'s Overview` : 'Group Executive Summary'} ({reportMonthStr})</span>
           </h3>
 
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <span className="text-slate-400 block mb-0.5">Total Outflow</span>
+              <span className="text-slate-400 block mb-0.5">{isPersonal ? 'Personal Outflow' : 'Total Outflow'}</span>
               <span className="text-lg font-extrabold text-slate-900 dark:text-white">
                 {formatCurrency(summary.totalExpense)}
               </span>
@@ -221,73 +268,93 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <span className="text-slate-400 block mb-0.5">Avg Daily Spend</span>
-              <span className="text-base font-bold text-slate-900 dark:text-white">
+              <span className="text-lg font-extrabold text-slate-900 dark:text-white">
                 {formatCurrency(Math.round(summary.avgDailySpending))}
               </span>
             </div>
             <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <span className="text-slate-400 block mb-0.5">Avg / Transaction</span>
-              <span className="text-base font-bold text-slate-900 dark:text-white">
+              <span className="text-lg font-extrabold text-slate-900 dark:text-white">
                 {formatCurrency(Math.round(summary.avgPerTransaction))}
               </span>
             </div>
           </div>
-
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Member Share Breakdown
-            </h4>
-            <div className="space-y-2">
-              {MEMBERS.map(m => m.name).map(member => {
-                const data = summary.memberTotals[member] || { count: 0, amount: 0, percentage: 0 };
-                return (
-                  <div key={member} className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">{member}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-slate-400">{data.count} txns</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(data.amount)}</span>
-                      <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-bold text-[10px]">
-                        {data.percentage}%
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
 
-        {/* Card 2: Top 10 Spending Items */}
+        {/* Card 2: Top Categories in Period */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>⭐ Top 10 Major Expenses ({reportMonthStr})</span>
+            <span>📊 Top Categories ({reportMonthStr})</span>
           </h3>
 
-          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-            {topItems.map((item, idx) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-xs"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-slate-400 font-bold w-4">{idx + 1}</span>
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-900 dark:text-white truncate">
-                      {item.itemName || item.category}
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      {item.member} • {item.date} • {item.paymentMode}
-                    </div>
+          {summary.categoryArray.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No transactions recorded for this period.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {summary.categoryArray.slice(0, 5).map((cat) => (
+                <div key={cat.category} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">{cat.category}</span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {formatCurrency(cat.amount)} <span className="text-[10px] text-slate-400 font-normal">({cat.percentage}%)</span>
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-600 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(cat.percentage, 100)}%` }}
+                    />
                   </div>
                 </div>
-                <div className="text-right font-extrabold text-slate-900 dark:text-white">
-                  {formatCurrency(item.amount)}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
+      </div>
+
+      {/* Card 3: Top 10 Spending Transactions */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+          🔝 Top 10 Largest Expenses in Period ({reportMonthStr})
+        </h3>
+
+        {topItems.length === 0 ? (
+          <div className="py-6 text-center text-xs text-slate-400">
+            No expenses found for this month period.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-bold uppercase">
+                  <th className="py-2.5 px-3">#</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Member</th>
+                  <th className="py-2.5 px-3">Item Name</th>
+                  <th className="py-2.5 px-3">Category</th>
+                  <th className="py-2.5 px-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {topItems.map((item, index) => (
+                  <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 font-medium">
+                    <td className="py-2.5 px-3 text-slate-400">{index + 1}</td>
+                    <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">{item.date}</td>
+                    <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">{item.member}</td>
+                    <td className="py-2.5 px-3 text-slate-900 dark:text-white font-semibold">{item.itemName || '—'}</td>
+                    <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400">{item.category}</td>
+                    <td className="py-2.5 px-3 text-right font-extrabold text-slate-900 dark:text-white">
+                      {formatCurrency(item.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
     </motion.div>

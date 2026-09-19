@@ -39,6 +39,19 @@ export function formatExactCurrency(amount: number): string {
   return '₹' + amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+export function getMonthDateRange(monthStr: string): { start: string; end: string } | null {
+  if (!monthStr || monthStr === 'all') return null;
+  const parts = monthStr.split('-');
+  if (parts.length < 2) return null;
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(y) || isNaN(m)) return null;
+  const start = `${y}-${String(m).padStart(2, '0')}-01`;
+  const lastDay = new Date(y, m, 0).getDate();
+  const end = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { start, end };
+}
+
 export function filterExpenses(
   expenses: Expense[],
   monthStr?: string, // '2026-08', '2026-09', or 'all'
@@ -51,33 +64,52 @@ export function filterExpenses(
   startDate?: string,
   endDate?: string
 ): Expense[] {
+  const monthRange = monthStr ? getMonthDateRange(monthStr) : null;
+
   return expenses.filter(e => {
-    if (monthStr && monthStr !== 'all') {
-      const expMonth = e.date.substring(0, 7);
-      if (expMonth !== monthStr) return false;
+    // 1. Strict month date range filter (date >= start AND date <= end)
+    if (monthRange) {
+      if (e.date < monthRange.start || e.date > monthRange.end) return false;
     }
+
+    // 2. Strict year date range filter
     if (yearStr && yearStr !== 'all') {
-      const expYear = e.date.substring(0, 4);
-      if (expYear !== yearStr) return false;
+      const startOfYear = `${yearStr}-01-01`;
+      const endOfYear = `${yearStr}-12-31`;
+      if (e.date < startOfYear || e.date > endOfYear) return false;
     }
+
+    // 3. Member filter
     if (member && member !== 'All' && e.member !== member) {
       return false;
     }
+
+    // 4. Category filter
     if (category && category !== 'All' && e.category !== category) {
       return false;
     }
+
+    // 5. Payment mode filter
     if (paymentMode && paymentMode !== 'All' && e.paymentMode !== paymentMode) {
       return false;
     }
-    if (place && place.trim() && !e.place?.toLowerCase().includes(place.toLowerCase())) {
+
+    // 6. Place / Location filter
+    if (place && place.trim() && !e.place?.toLowerCase().includes(place.toLowerCase().trim())) {
       return false;
     }
+
+    // 7. Custom start date filter
     if (startDate && e.date < startDate) {
       return false;
     }
+
+    // 8. Custom end date filter
     if (endDate && e.date > endDate) {
       return false;
     }
+
+    // 9. Full-text search across all relevant fields
     if (searchQuery && searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       const matchItem = e.itemName?.toLowerCase().includes(query);
@@ -86,10 +118,12 @@ export function filterExpenses(
       const matchMember = e.member.toLowerCase().includes(query);
       const matchAmount = e.amount.toString().includes(query);
       const matchPayment = e.paymentMode.toLowerCase().includes(query);
-      if (!matchItem && !matchPlace && !matchCategory && !matchMember && !matchAmount && !matchPayment) {
+      const matchNotes = e.notes?.toLowerCase().includes(query);
+      if (!matchItem && !matchPlace && !matchCategory && !matchMember && !matchAmount && !matchPayment && !matchNotes) {
         return false;
       }
     }
+
     return true;
   });
 }
