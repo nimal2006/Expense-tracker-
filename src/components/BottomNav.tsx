@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import { ActiveTab } from '../types';
 import { LayoutDashboard, Plus, Receipt, FileText, Users } from 'lucide-react';
 
@@ -17,60 +18,71 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onSelectTab }) 
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800/80 shadow-[0_-4px_16px_rgba(0,0,0,0.04)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.2)] transition-colors">
-      <div className="flex items-center justify-around h-14 px-1 max-w-md mx-auto">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-[#10162A]/90 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 shadow-[0_-8px_32px_rgba(0,0,0,0.08)] dark:shadow-[0_-8px_32px_rgba(0,0,0,0.5)] transition-colors">
+      <div className="flex items-center justify-around h-15 px-2 max-w-md mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
 
           if (item.isPrimary) {
             return (
-              <button
+              <motion.button
                 key={item.id}
+                whileTap={{ scale: 0.94 }}
+                whileHover={{ scale: 1.06 }}
                 onClick={() => onSelectTab(item.id)}
-                className="flex flex-col items-center justify-center -mt-3.5 relative group active:scale-95 transition-transform"
+                className="flex flex-col items-center justify-center -mt-4 relative group transition-transform duration-200 cursor-pointer"
                 aria-label="Add new expense"
               >
                 <div
-                  className={`w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-all ${
+                  className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all bg-gradient-to-tr from-[#7C5CFC] to-[#22D3EE] text-white ring-4 ring-slate-50 dark:ring-[#080B18] ${
                     isActive
-                      ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 dark:ring-indigo-950 shadow-indigo-500/30'
-                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-600/25'
+                      ? 'animate-logo-glow ring-[#7C5CFC]/40 shadow-[0_0_24px_rgba(34,211,238,0.6)]'
+                      : 'animate-breathing-glow shadow-[0_4px_16px_rgba(124,92,252,0.4)] hover:shadow-[0_0_24px_rgba(34,211,238,0.55)]'
                   }`}
                 >
-                  <Plus className="w-5 h-5 stroke-[2.5]" />
+                  <Plus className="w-6 h-6 stroke-[2.5] transition-transform duration-200 group-hover:rotate-90" />
                 </div>
-                <span
-                  className={`text-[9.5px] font-bold mt-0.5 tracking-tight ${
-                    isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
+                <span className={`text-[10px] font-bold mt-0.5 tracking-tight ${isActive ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-500 dark:text-slate-400'}`}>
                   Add
                 </span>
-              </button>
+              </motion.button>
             );
           }
 
           return (
-            <button
+            <motion.button
               key={item.id}
+              whileTap={{ scale: 0.94 }}
               onClick={() => onSelectTab(item.id)}
-              className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors relative active:scale-95 ${
+              className={`flex flex-col items-center justify-center flex-1 py-1.5 transition-all duration-200 relative cursor-pointer ${
                 isActive
-                  ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+                  ? 'text-cyan-600 dark:text-cyan-400 font-bold -translate-y-0.5'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              <div className="relative">
-                <Icon className={`w-4.5 h-4.5 transition-transform ${isActive ? 'stroke-[2.2]' : 'stroke-[1.8]'}`} />
+              <div className="relative flex flex-col items-center">
+                <Icon
+                  className={`w-5 h-5 transition-all duration-200 ${
+                    isActive
+                      ? 'stroke-[2.3] scale-110 text-cyan-600 dark:text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]'
+                      : 'stroke-[1.8] group-hover:scale-105'
+                  }`}
+                />
                 {isActive && (
-                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-600 dark:bg-indigo-400" />
+                  <motion.span
+                    layoutId="activeNavIndicator"
+                    className="absolute -bottom-1.5 w-4 h-0.5 rounded-full bg-gradient-to-r from-[#7C5CFC] to-[#22D3EE] shadow-[0_0_8px_rgba(34,211,238,0.6)]"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
                 )}
               </div>
-              <span className="text-[10px] font-medium leading-none mt-1 tracking-tight">
+              <span className={`text-[10px] leading-none mt-1.5 tracking-tight transition-colors ${
+                isActive ? 'text-slate-900 dark:text-slate-100 font-bold' : 'font-medium'
+              }`}>
                 {item.label}
               </span>
-            </button>
+            </motion.button>
           );
         })}
       </div>

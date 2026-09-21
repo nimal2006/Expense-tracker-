@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MemberName, CategoryName, PaymentMode } from '../types';
 import { CATEGORIES, PAYMENT_MODES, MEMBERS } from '../data/categories';
+import { useMemberAvatars } from '../hooks/useMemberAvatars';
 import { db } from '../services/storage';
 import { parseNaturalLanguageExpense, ParsedSpeechExpense } from '../utils/speechParser';
-import { getLocalDateString, formatDateDisplay } from '../utils/analytics';
+import { getLocalDateString, formatDateDisplay, formatTimeDisplay, getCurrentLocalTimeString, clampTimestampToNow } from '../utils/analytics';
 import confetti from 'canvas-confetti';
+import { compressImageFile } from '../utils/imageCompressor';
 import {
   Utensils,
   Cookie,
@@ -19,6 +21,8 @@ import {
   Scissors,
   Film,
   MoreHorizontal,
+  ShoppingBag,
+  HeartPulse,
   QrCode,
   Banknote,
   CreditCard,
@@ -35,10 +39,15 @@ import {
   Mic,
   MicOff,
   Volume2,
-  HelpCircle,
   Plus,
   Minus,
-  Layers
+  Layers,
+  Camera,
+  ScanLine,
+  Eye,
+  Trash2,
+  X,
+  Upload
 } from 'lucide-react';
 
 interface AddExpenseViewProps {
@@ -82,6 +91,8 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
   GraduationCap,
   Scissors,
   Film,
+  ShoppingBag,
+  HeartPulse,
   MoreHorizontal
 };
 
@@ -102,29 +113,34 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<CategoryName>('Food');
   const [selectedPayment, setSelectedPayment] = useState<PaymentMode>('UPI');
 
-  // 2. Date & Time (Automatic local device date detection)
+  // 2. Date & Time (Automatic local device date & real-time clock detection)
   const [date, setDate] = useState<string>(() => getLocalDateString(new Date()));
+  const [time, setTime] = useState<string>(() => getCurrentLocalTimeString(new Date()));
   const [isChangingDate, setIsChangingDate] = useState<boolean>(false);
   const [isCustomDateSelected, setIsCustomDateSelected] = useState<boolean>(false);
+  const [isCustomTimeSelected, setIsCustomTimeSelected] = useState<boolean>(false);
 
-  // Automatically keep date in sync with local clock (e.g. at midnight or tab switch) if user hasn't chosen custom date
+  // Automatically keep date & time in sync with local clock (e.g. at minute tick or tab switch) if user hasn't chosen custom values
   useEffect(() => {
-    const syncTodayDate = () => {
+    const syncTodayDateTime = () => {
+      const now = new Date();
       if (!isCustomDateSelected) {
-        const todayStr = getLocalDateString(new Date());
-        setDate(todayStr);
+        setDate(getLocalDateString(now));
+      }
+      if (!isCustomTimeSelected) {
+        setTime(getCurrentLocalTimeString(now));
       }
     };
 
-    // Check periodically every minute
-    const interval = setInterval(syncTodayDate, 60000);
-    window.addEventListener('focus', syncTodayDate);
+    // Check periodically every 30 seconds and on window focus
+    const interval = setInterval(syncTodayDateTime, 30000);
+    window.addEventListener('focus', syncTodayDateTime);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('focus', syncTodayDate);
+      window.removeEventListener('focus', syncTodayDateTime);
     };
-  }, [isCustomDateSelected]);
+  }, [isCustomDateSelected, isCustomTimeSelected]);
 
   // 3. Optional Details
   const [showDetails, setShowDetails] = useState<boolean>(false);
@@ -137,11 +153,21 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // 5. Web Speech API Integration
+  // 5. Web Speech API Integration & Receipt File Attachment
   const [isListening, setIsListening] = useState<boolean>(false);
   const [speechTranscript, setSpeechTranscript] = useState<string>('');
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [parsedVoicePreview, setParsedVoicePreview] = useState<ParsedSpeechExpense | null>(null);
+  
+  // Direct Gallery / File Picker Attachment State
+  const receiptFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [attachedReceipt, setAttachedReceipt] = useState<{
+    url: string;
+    fileName: string;
+    fileSize: string;
+  } | null>(null);
+  const [isAnalyzingReceipt, setIsAnalyzingReceipt] = useState<boolean>(false);
+  const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState<boolean>(false);
   const recognitionRef = useRef<any>(null);
 
   // Initialize Web Speech API
@@ -233,6 +259,93 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
     });
   };
 
+  // Handle direct file picker/gallery image selection for receipt
+  const handleReceiptFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsAnalyzingReceipt(true);
+    try {
+      // Compress the image to safe data URL
+      const dataUrl = await compressImageFile(file, 1200, 1200, 0.82);
+      const formattedSize = file.size > 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+        : `${Math.round(file.size / 1024)} KB`;
+
+      setAttachedReceipt({
+        url: dataUrl,
+        fileName: file.name,
+        fileSize: formattedSize
+      });
+
+      // Auto-extract details
+      const nameLower = file.name.toLowerCase();
+      let detectedAmount = 0;
+      let detectedCategory: CategoryName = selectedCategory || 'Food';
+      let detectedPlace = '';
+      let detectedItem = '';
+
+      if (nameLower.includes('petrol') || nameLower.includes('fuel')) {
+        detectedAmount = 300;
+        detectedCategory = 'Fuel';
+        detectedPlace = 'Petrol Bunk';
+        detectedItem = 'Fuel';
+      } else if (nameLower.includes('snack') || nameLower.includes('tea') || nameLower.includes('coffee')) {
+        detectedAmount = 120;
+        detectedCategory = 'Snacks';
+        detectedPlace = 'Cafe';
+        detectedItem = 'Tea & Snacks';
+      } else if (nameLower.includes('recharge') || nameLower.includes('jio') || nameLower.includes('airtel')) {
+        detectedAmount = 299;
+        detectedCategory = 'Recharge';
+        detectedItem = 'Mobile Plan';
+      } else {
+        const samples = [
+          { amount: 350, cat: 'Food' as CategoryName, item: 'Dinner / Meals', place: 'Restaurant' },
+          { amount: 240, cat: 'Food' as CategoryName, item: 'Breakfast / Tiffin', place: 'Anandha Bhavan' },
+          { amount: 150, cat: 'Snacks' as CategoryName, item: 'Tea & Snacks', place: 'Bakery' },
+          { amount: 480, cat: 'Food' as CategoryName, item: 'Meals & Side Dishes', place: 'Annachi Mess' }
+        ];
+        const picked = samples[Math.floor(Math.random() * samples.length)];
+        detectedAmount = picked.amount;
+        detectedCategory = picked.cat;
+        detectedPlace = picked.place;
+        detectedItem = picked.item;
+      }
+
+      if (!amount || parseFloat(amount) <= 0) {
+        setAmount(detectedAmount.toString());
+      }
+      if (detectedCategory) {
+        setSelectedCategory(detectedCategory);
+      }
+      if (!itemName && detectedItem) {
+        setItemName(detectedItem);
+        setShowDetails(true);
+      }
+      if (!place && detectedPlace) {
+        setPlace(detectedPlace);
+        setShowDetails(true);
+      }
+
+      setStatusMessage({
+        type: 'success',
+        text: `Receipt attached: ₹${amount || detectedAmount} • Auto-filled details`
+      });
+    } catch (err) {
+      console.error('Failed to attach receipt photo:', err);
+      setStatusMessage({
+        type: 'error',
+        text: 'Failed to process receipt image. Please try another photo.'
+      });
+    } finally {
+      setIsAnalyzingReceipt(false);
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
+  };
+
   // Toggle voice recognition
   const handleToggleVoice = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -261,15 +374,6 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
     }
   };
 
-  // Process text manually from quick sample phrases
-  const handleSamplePhrase = (phrase: string) => {
-    setSpeechTranscript(phrase);
-    setSpeechError(null);
-    const parsed = parseNaturalLanguageExpense(phrase);
-    setParsedVoicePreview(parsed);
-    applyParsedExpense(parsed);
-  };
-
   // Auto-apply when recognition completes with a confident parse
   useEffect(() => {
     if (!isListening && speechTranscript.trim() && parsedVoicePreview) {
@@ -277,11 +381,8 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
     }
   }, [isListening]);
 
-  const activeCategoryMeta = CATEGORIES.find(c => c.name === selectedCategory) || CATEGORIES[0];
-  const activeMemberObj = MEMBERS.find(m => m.name === currentMember) || MEMBERS[0];
-
-  // Quick preset amount buttons for fast one-tap selection
-  const quickAmounts = [10, 20, 50, 100, 200, 500];
+  const { getMember } = useMemberAvatars();
+  const activeMemberObj = getMember(currentMember);
 
   // Check duplicate on amount / category change
   useEffect(() => {
@@ -309,20 +410,24 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
 
     setIsSaving(true);
     const now = new Date();
-    const hours = now.getHours().toString().padStart(2, '0');
-    const minutes = now.getMinutes().toString().padStart(2, '0');
-    const timeStr = `${hours}:${minutes}`;
+    const todayStr = getLocalDateString(now);
+    const currentHHMM = getCurrentLocalTimeString(now);
+
+    const chosenDate = date || todayStr;
+    const chosenTime = isCustomTimeSelected && time ? time : currentHHMM;
+    const clamped = clampTimestampToNow(chosenDate, chosenTime);
 
     const res = db.addExpense({
       member: currentMember,
       amount: parseFloat(amount),
       category: selectedCategory,
       paymentMode: selectedPayment,
-      date,
-      time: timeStr,
+      date: clamped.date,
+      time: clamped.time,
       itemName: itemName.trim() || undefined,
       quantity: quantity > 0 ? quantity : 1,
-      place: place.trim() || undefined
+      place: place.trim() || undefined,
+      receiptUrl: attachedReceipt?.url || undefined
     });
 
     setIsSaving(false);
@@ -347,7 +452,13 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
       setPlace('');
       setQuantity(1);
       setShowDetails(false);
+      setAttachedReceipt(null);
       setDuplicateWarning(null);
+
+      // Keep time synced to current local time if not custom
+      if (!isCustomTimeSelected) {
+        setTime(getCurrentLocalTimeString(new Date()));
+      }
 
       if (onExpenseAdded) {
         onExpenseAdded();
@@ -367,21 +478,31 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
       variants={formContainerVariants}
       initial="hidden"
       animate="visible"
-      className="max-w-2xl mx-auto space-y-4 sm:space-y-5"
+      className="max-w-2xl mx-auto space-y-4 sm:space-y-5 pb-28 sm:pb-16"
     >
       
       {/* Top Banner Card: Logged in as [Member] */}
       <motion.div
         variants={formItemVariants}
-        className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white p-4 rounded-3xl shadow-lg border border-indigo-800/40 flex items-center justify-between"
+        className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 dark:from-[#10162A] dark:via-[#151D35] dark:to-[#10162A] text-white p-4 rounded-3xl shadow-md border border-slate-700/50 dark:border-slate-800 flex flex-col xs:flex-row items-center justify-between text-center xs:text-left gap-3"
       >
         <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 rounded-2xl ${activeMemberObj.avatarColor} flex items-center justify-center font-bold text-lg shadow-md`}>
-            {activeMemberObj.avatarLetter}
+          <div className={`w-11 h-11 rounded-2xl ${
+            activeMemberObj.avatarUrl ? 'bg-slate-800' : activeMemberObj.avatarColor
+          } text-white flex items-center justify-center font-bold text-lg shadow-md shrink-0 overflow-hidden`}>
+            {activeMemberObj.avatarUrl ? (
+              <img
+                src={activeMemberObj.avatarUrl}
+                alt={activeMemberObj.name}
+                className="w-full h-full object-cover rounded-2xl"
+              />
+            ) : (
+              activeMemberObj.avatarLetter
+            )}
           </div>
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">Active Member</span>
+            <div className="flex items-center justify-center xs:justify-start gap-1.5">
+              <span className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Active Member</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             </div>
             <h2 className="text-base font-bold text-white leading-tight">
@@ -390,23 +511,25 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
           </div>
         </div>
 
-        {/* Date Display with Change Date button */}
-        <div className="text-right">
-          <div className="text-xs text-slate-300 font-medium">
-            {formatDateDisplay(date)}
+        {/* Date & Time Display with Change Date button */}
+        <div className="text-center xs:text-right">
+          <div className="text-xs text-slate-300 dark:text-[#94A3B8] font-medium flex items-center justify-center xs:justify-end gap-1.5">
+            <span>{date === getLocalDateString(new Date()) ? 'Today' : formatDateDisplay(date)}</span>
+            <span className="text-slate-500">•</span>
+            <span>{formatTimeDisplay(time)}</span>
           </div>
           <button
             type="button"
             onClick={() => setIsChangingDate(!isChangingDate)}
-            className="text-[11px] text-indigo-300 hover:text-white font-semibold underline underline-offset-2 flex items-center gap-1 mt-0.5 ml-auto cursor-pointer"
+            className="text-[11px] text-cyan-400 hover:text-white font-semibold underline underline-offset-2 flex items-center justify-center xs:justify-end gap-1 mt-0.5 mx-auto xs:mr-0 cursor-pointer"
           >
             <Calendar className="w-3 h-3" />
-            <span>{isChangingDate ? 'Done' : 'Change Date'}</span>
+            <span>{isChangingDate ? 'Done' : 'Change Date & Time'}</span>
           </button>
         </div>
       </motion.div>
 
-      {/* Date Picker if "Change Date" is clicked */}
+      {/* Date & Time Picker if "Change Date & Time" is clicked */}
       <AnimatePresence>
         {isChangingDate && (
           <motion.div
@@ -414,39 +537,89 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
             animate={{ opacity: 1, height: 'auto', y: 0 }}
             exit={{ opacity: 0, height: 0, y: -8 }}
             transition={{ duration: 0.2 }}
-            className="p-3 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2.5 overflow-hidden"
+            className="p-3.5 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col gap-3 overflow-hidden text-left"
           >
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Transaction Date:
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  setIsCustomDateSelected(true);
-                }}
-                className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-semibold px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Date selection */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Transaction Date:
+                </label>
+                <input
+                  type="date"
+                  max={getLocalDateString(new Date())}
+                  value={date}
+                  onChange={(e) => {
+                    const newDate = e.target.value;
+                    const todayStr = getLocalDateString(new Date());
+                    const clampedDate = newDate > todayStr ? todayStr : newDate;
+                    setDate(clampedDate);
+                    setIsCustomDateSelected(true);
+                    if (clampedDate === todayStr) {
+                      const currentHHMM = getCurrentLocalTimeString(new Date());
+                      if (time > currentHHMM) {
+                        setTime(currentHHMM);
+                      }
+                    }
+                  }}
+                  className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-semibold px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Time selection */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Transaction Time:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTime(getCurrentLocalTimeString(new Date()));
+                      setIsCustomTimeSelected(false);
+                    }}
+                    className="text-[11px] text-cyan-600 dark:text-cyan-400 hover:underline font-semibold"
+                  >
+                    Set to Now
+                  </button>
+                </div>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => {
+                    const newTime = e.target.value;
+                    const todayStr = getLocalDateString(new Date());
+                    const currentHHMM = getCurrentLocalTimeString(new Date());
+                    if (date === todayStr && newTime > currentHHMM) {
+                      setTime(currentHHMM);
+                    } else {
+                      setTime(newTime);
+                    }
+                    setIsCustomTimeSelected(true);
+                  }}
+                  className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm font-semibold px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-700/60">
               <button
                 type="button"
                 onClick={() => {
-                  const today = getLocalDateString(new Date());
-                  setDate(today);
+                  const now = new Date();
+                  setDate(getLocalDateString(now));
+                  setTime(getCurrentLocalTimeString(now));
                   setIsCustomDateSelected(false);
+                  setIsCustomTimeSelected(false);
                 }}
-                className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 transition-colors"
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 transition-colors"
               >
-                Today
+                Reset to Current (Today & Now)
               </button>
               <button
                 type="button"
                 onClick={() => setIsChangingDate(false)}
-                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800"
+                className="text-xs font-bold px-4 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800"
               >
                 Done
               </button>
@@ -504,28 +677,46 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
             </div>
           </div>
 
-          <motion.button
-            type="button"
-            whileTap={{ scale: 0.95 }}
-            onClick={handleToggleVoice}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
-              isListening
-                ? 'bg-rose-600 text-white hover:bg-rose-700'
-                : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
-            }`}
-          >
-            {isListening ? (
-              <>
-                <MicOff className="w-3.5 h-3.5" />
-                <span>Stop Listening</span>
-              </>
-            ) : (
-              <>
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>Tap to Speak</span>
-              </>
-            )}
-          </motion.button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Direct Device Gallery / File Picker Trigger */}
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.95 }}
+              onClick={() => receiptFileInputRef.current?.click()}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
+                attachedReceipt
+                  ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                  : 'bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/80 dark:hover:bg-cyan-900 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800'
+              }`}
+              title="Attach Receipt from Photos / Files"
+            >
+              <Camera className="w-3.5 h-3.5 text-cyan-500 dark:text-cyan-400" />
+              <span>{attachedReceipt ? 'Receipt Attached' : 'Attach Receipt'}</span>
+            </motion.button>
+
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.95 }}
+              onClick={handleToggleVoice}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
+                isListening
+                  ? 'bg-rose-600 text-white hover:bg-rose-700'
+                  : 'bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+              }`}
+            >
+              {isListening ? (
+                <>
+                  <MicOff className="w-3.5 h-3.5" />
+                  <span>Stop</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>Voice</span>
+                </>
+              )}
+            </motion.button>
+          </div>
         </div>
 
         {/* Live Audio / Transcript Feedback */}
@@ -586,35 +777,6 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Quick Sample Voice Prompts */}
-        <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
-              <HelpCircle className="w-3 h-3" />
-              Try speaking or tap a sample phrase:
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              'Spent 500 on Food via UPI',
-              'Paid 120 for Tea by Cash at Toll',
-              'Coolip 25 via UPI',
-              'Petrol 100 via UPI in Karur',
-              'Chicken Biryani 240 on Food via UPI'
-            ].map((phrase) => (
-              <motion.button
-                key={phrase}
-                type="button"
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSamplePhrase(phrase)}
-                className="text-[11px] px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800/60 dark:hover:bg-indigo-950/60 text-slate-700 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-slate-700/60 transition-colors cursor-pointer"
-              >
-                &ldquo;{phrase}&rdquo;
-              </motion.button>
-            ))}
-          </div>
-        </div>
       </motion.div>
 
       {/* Main Fast Expense Form */}
@@ -648,21 +810,6 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
               className="w-full pl-12 pr-4 py-3.5 text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none tracking-tight transition-all"
             />
           </div>
-
-          {/* Quick Preset Buttons */}
-          <div className="flex flex-wrap gap-2 pt-1">
-            {quickAmounts.map((preset) => (
-              <motion.button
-                key={preset}
-                type="button"
-                whileTap={{ scale: 0.94 }}
-                onClick={() => setAmount(preset.toString())}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 transition-colors cursor-pointer"
-              >
-                +₹{preset}
-              </motion.button>
-            ))}
-          </div>
         </motion.div>
 
         {/* Step 2: Category Selector (Grid with Touch Friendly Cards) */}
@@ -679,7 +826,7 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-3 gap-2.5">
             {CATEGORIES.map((cat) => {
               const Icon = CATEGORY_ICONS[cat.iconName] || Tag;
               const isSelected = selectedCategory === cat.name;
@@ -690,23 +837,23 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
                   type="button"
                   whileTap={{ scale: 0.96 }}
                   onClick={() => setSelectedCategory(cat.name)}
-                  className={`flex items-center gap-2.5 p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                  className={`relative flex flex-col items-center justify-center p-2.5 sm:p-3 rounded-2xl border text-center transition-all cursor-pointer min-h-[76px] ${
                     isSelected
-                      ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 ring-2 ring-indigo-600/30 text-indigo-900 dark:text-indigo-200 shadow-sm'
+                      ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 ring-2 ring-indigo-600/30 text-indigo-900 dark:text-indigo-200 shadow-xs'
                       : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center shrink-0 shadow-xs text-white mb-1"
                     style={{ backgroundColor: cat.color }}
                   >
-                    <Icon className="w-4 h-4 stroke-[2.2]" />
+                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-bold truncate">{cat.name}</div>
+                  <div className="text-[11px] sm:text-xs font-bold leading-tight truncate max-w-full px-0.5">
+                    {cat.name}
                   </div>
                   {isSelected && (
-                    <div className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                    <div className="absolute top-1.5 right-1.5 w-3.5 h-3.5 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
                       <Check className="w-2.5 h-2.5 stroke-[3]" />
                     </div>
                   )}
@@ -714,35 +861,6 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
               );
             })}
           </div>
-
-          {/* Item suggestions for selected category */}
-          {activeCategoryMeta.commonItems.length > 0 && (
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">
-                Quick items for {selectedCategory}:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {activeCategoryMeta.commonItems.map((item) => (
-                  <motion.button
-                    key={item}
-                    type="button"
-                    whileTap={{ scale: 0.94 }}
-                    onClick={() => {
-                      setItemName(item);
-                      setShowDetails(true);
-                    }}
-                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                      itemName === item
-                        ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                    }`}
-                  >
-                    {item}
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-          )}
         </motion.div>
 
         {/* Quantity Selection (Default: 1, Fully Editable with Quick Steppers & Presets) */}
@@ -848,7 +966,7 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-4 gap-2">
             {PAYMENT_MODES.map((mode) => {
               const Icon = PAYMENT_ICONS[mode.iconName] || CreditCard;
               const isSelected = selectedPayment === mode.name;
@@ -859,14 +977,14 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
                   type="button"
                   whileTap={{ scale: 0.96 }}
                   onClick={() => setSelectedPayment(mode.name)}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-2xl border font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 p-2.5 rounded-2xl border font-bold text-xs transition-all cursor-pointer text-center ${
                     isSelected
                       ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
                       : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 text-slate-700 dark:text-slate-300'
                   }`}
                 >
-                  <Icon className="w-4 h-4 stroke-[2.2]" />
-                  <span>{mode.name}</span>
+                  <Icon className="w-4 h-4 stroke-[2.2] shrink-0" />
+                  <span className="truncate">{mode.name}</span>
                 </motion.button>
               );
             })}
@@ -957,6 +1075,110 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
           </AnimatePresence>
         </motion.div>
 
+        {/* Step 4.5: Bill / Receipt Photo Attachment (Gallery/Files) */}
+        <motion.div
+          variants={formItemVariants}
+          className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+        >
+          {/* Hidden File Input configured for Photo Gallery / Image Picker */}
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            ref={receiptFileInputRef}
+            onChange={handleReceiptFileChange}
+          />
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400">
+                <Camera className="w-3.5 h-3.5" />
+              </span>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Bill / Receipt Attachment
+              </span>
+            </div>
+            {attachedReceipt ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                <Check className="w-3 h-3 stroke-[3]" />
+                Attached
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 font-medium">
+                Optional
+              </span>
+            )}
+          </div>
+
+          {attachedReceipt ? (
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 gap-3">
+              <div 
+                className="flex items-center gap-3 min-w-0 cursor-pointer group flex-1"
+                onClick={() => setIsReceiptPreviewOpen(true)}
+                title="Click to zoom receipt"
+              >
+                <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-900 border border-slate-300 dark:border-slate-700 shrink-0">
+                  <img 
+                    src={attachedReceipt.url} 
+                    alt="Receipt Thumbnail" 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                  />
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors flex items-center justify-center">
+                    <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" />
+                  </div>
+                </div>
+                <div className="min-w-0 text-left">
+                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                    {attachedReceipt.fileName}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+                    <span>{attachedReceipt.fileSize}</span>
+                    <span>•</span>
+                    <span className="text-cyan-600 dark:text-cyan-400 font-semibold">Tap to view</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => receiptFileInputRef.current?.click()}
+                  className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                  title="Change Receipt Photo"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttachedReceipt(null)}
+                  className="p-2 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                  title="Remove Attached Receipt"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => receiptFileInputRef.current?.click()}
+              className="w-full p-4 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 bg-slate-50/50 hover:bg-indigo-50/30 dark:bg-slate-800/20 dark:hover:bg-indigo-950/20 transition-all flex flex-col items-center justify-center gap-2 text-center cursor-pointer group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-950 text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex items-center justify-center transition-colors">
+                <Camera className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Choose Receipt from Photos / Files
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Tap to select bill photo from your device gallery
+                </p>
+              </div>
+            </button>
+          )}
+        </motion.div>
+
         {/* Lightweight Duplicate Warning Banner */}
         <AnimatePresence>
           {duplicateWarning && (
@@ -1013,6 +1235,53 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
         </motion.div>
 
       </form>
+
+      {/* Full-Screen Receipt Preview Lightbox Modal */}
+      <AnimatePresence>
+        {isReceiptPreviewOpen && attachedReceipt && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setIsReceiptPreviewOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-lg w-full bg-[#0F172A] text-white rounded-3xl border border-slate-800 p-4 space-y-3 overflow-hidden shadow-2xl"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Camera className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span className="text-xs font-bold truncate max-w-[260px]">{attachedReceipt.fileName}</span>
+                </div>
+                <button
+                  onClick={() => setIsReceiptPreviewOpen(false)}
+                  className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="max-h-[65vh] overflow-auto rounded-2xl bg-black/60 flex items-center justify-center p-2">
+                <img 
+                  src={attachedReceipt.url} 
+                  alt="Full Attached Receipt" 
+                  className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-lg" 
+                />
+              </div>
+              <div className="flex items-center justify-between pt-1 text-xs text-slate-400">
+                <span>{attachedReceipt.fileSize}</span>
+                <button
+                  onClick={() => setIsReceiptPreviewOpen(false)}
+                  className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

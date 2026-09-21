@@ -24,7 +24,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'c
         whileHover={{ scale: 1.03 }}
         whileTap={{ scale: 0.95 }}
         onClick={install}
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm shadow-emerald-600/30 transition-all cursor-pointer ${className}`}
+        className={`inline-flex items-center gap-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm shadow-emerald-600/30 transition-all cursor-pointer ${className || 'h-9'}`}
         title="Install Expense Tracker app on your device for offline use"
       >
         <Download className="w-3.5 h-3.5" />
@@ -41,7 +41,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'c
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setShowIOSGuide(true)}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-all cursor-pointer ${className}`}
+          className={`inline-flex items-center gap-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-all cursor-pointer ${className || 'h-9'}`}
           title="Add Expense Tracker to your iPhone/iPad Home Screen"
         >
           <Smartphone className="w-3.5 h-3.5 text-indigo-500" />

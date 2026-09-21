@@ -14,11 +14,11 @@ export default defineConfig(() => {
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icon.svg', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
           id: '/',
-          name: 'Friends Expense Tracker',
-          short_name: 'ExpenseTrack',
-          description: 'Fast, mobile-first continuous expense tracker & analytics dashboard for friends with instant 3-tap entry, offline mode, and PDF reports.',
-          theme_color: '#4f46e5',
-          background_color: '#0f172a',
+          name: 'Friends Tr$cker',
+          short_name: 'FriendsTr$cker',
+          description: 'Smart Expense Tracking - Fast, mobile-first continuous expense tracker & analytics dashboard for friends with instant 3-tap entry, offline mode, and PDF reports.',
+          theme_color: '#131F45',
+          background_color: '#080B18',
           display: 'standalone',
           orientation: 'portrait',
           start_url: '/',
@@ -45,6 +45,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           runtimeCaching: [
             {

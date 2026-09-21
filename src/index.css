@@ -1,3 +1,375 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --color-bg: #080B18;
+  --color-surface: #10162A;
+  --color-surface-secondary: #151D35;
+  --color-primary: #7C5CFC;
+  --color-secondary: #22D3EE;
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-danger: #FB7185;
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+}
+
+body {
+  background-color: #080B18;
+  color: #F8FAFC;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 1. Aurora Background Flow (12s infinite loop) */
+@keyframes aurora-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.aurora-bg {
+  background: radial-gradient(circle at 10% 20%, rgba(124, 92, 252, 0.12) 0%, transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(34, 211, 238, 0.12) 0%, transparent 40%),
+              radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.08) 0%, transparent 50%),
+              #080B18;
+  background-size: 200% 200%;
+  animation: aurora-flow 12s ease-in-out infinite;
+}
+
+/* 2. Color Cycle Accent (Violet -> Blue -> Cyan -> Mint -> Violet) (10s infinite loop) */
+@keyframes color-cycle {
+  0%, 100% {
+    border-color: #7C5CFC;
+    box-shadow: 0 0 16px rgba(124, 92, 252, 0.35);
+  }
+  25% {
+    border-color: #3B82F6;
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.35);
+  }
+  50% {
+    border-color: #22D3EE;
+    box-shadow: 0 0 16px rgba(34, 211, 238, 0.35);
+  }
+  75% {
+    border-color: #34D399;
+    box-shadow: 0 0 16px rgba(52, 211, 153, 0.35);
+  }
+}
+
+.animate-color-cycle {
+  animation: color-cycle 10s ease-in-out infinite;
+}
+
+/* 3. Logo Glow Accent Cycle */
+@keyframes logo-glow-cycle {
+  0%, 100% {
+    filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.55));
+  }
+  33% {
+    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.55));
+  }
+  66% {
+    filter: drop-shadow(0 0 10px rgba(74, 222, 128, 0.55));
+  }
+}
+
+.animate-logo-glow {
+  animation: logo-glow-cycle 9s ease-in-out infinite;
+}
+
+/* 4. Breathing Glow (3s loop for Semantic Budget Statuses & FAB idle) */
+@keyframes breathing-glow {
+  0%, 100% {
+    opacity: 0.75;
+    box-shadow: 0 0 16px rgba(34, 211, 238, 0.35), 0 0 32px rgba(124, 92, 252, 0.2);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 24px rgba(34, 211, 238, 0.55), 0 0 44px rgba(124, 92, 252, 0.35);
+    transform: scale(1.02);
+  }
+}
+
+.animate-breathing-glow {
+  animation: breathing-glow 3s ease-in-out infinite;
+}
+
+/* 4b. Ambient Background Blob Animations (18-24s slow movement) */
+@keyframes ambient-blob-1 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -40px) scale(1.08);
+  }
+  66% {
+    transform: translate(-25px, 20px) scale(0.95);
+  }
+}
+
+@keyframes ambient-blob-2 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(-35px, 30px) scale(1.05);
+  }
+  66% {
+    transform: translate(20px, -35px) scale(0.92);
+  }
+}
+
+@keyframes ambient-blob-3 {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    transform: translate(25px, 35px) scale(1.1);
+  }
+}
+
+.animate-blob-1 {
+  animation: ambient-blob-1 20s ease-in-out infinite;
+}
+
+.animate-blob-2 {
+  animation: ambient-blob-2 25s ease-in-out infinite;
+}
+
+.animate-blob-3 {
+  animation: ambient-blob-3 22s ease-in-out infinite;
+}
+
+/* 4c. Continuous Subtle Gradient Border Animation on Hover */
+@keyframes gradient-border-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.card-hover-border {
+  position: relative;
+}
+
+.card-hover-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(90deg, #22D3EE, #3B82F6, #7C5CFC, #22D3EE);
+  background-size: 300% 300%;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  animation: gradient-border-flow 3.5s ease infinite;
+}
+
+.card-hover-border:hover::before {
+  opacity: 0.85;
+}
+
+/* 5. Shimmer Slide for Progress Bars */
+@keyframes shimmer-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  animation: shimmer-slide 2.5s infinite;
+}
+
+/* 6. Two-Phase Delete Shake & Vanish Animation */
+@keyframes delete-shake-flare {
+  0% { transform: translateX(0); border-color: rgba(244, 63, 94, 0.9); box-shadow: 0 0 20px rgba(244, 63, 94, 0.6); }
+  25% { transform: translateX(-4px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-4px); }
+  100% { transform: translateX(0); border-color: rgba(244, 63, 94, 0.9); box-shadow: 0 0 20px rgba(244, 63, 94, 0.6); }
+}
+
+@keyframes delete-vanish-dissolve {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
+    max-height: 240px;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.92) translateY(-6px);
+    filter: blur(4px);
+    max-height: 0px;
+    margin-top: 0px !important;
+    margin-bottom: 0px !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+    border-width: 0px !important;
+  }
+}
+
+.deleting-card-anim {
+  animation: delete-shake-flare 0.12s ease-in-out 0s 1, delete-vanish-dissolve 0.35s ease-out 0.08s forwards;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Glassmorphism Surface Helpers */
+.glass-panel {
+  background-color: rgba(16, 22, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-subtle {
+  background-color: rgba(21, 29, 53, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-capsule {
+  background-color: rgba(21, 29, 53, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(124, 92, 252, 0.25);
+}
+
+/* Text Gradient Utilities */
+.text-gradient-aurora {
+  background: linear-gradient(135deg, #7C5CFC 0%, #22D3EE 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-premium {
+  background: linear-gradient(135deg, #22D3EE 0%, #34D399 50%, #7C5CFC 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Custom Scrollbar for Dark Aurora Theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #080B18;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #151D35;
+  border-radius: 9999px;
+  border: 1px solid rgba(124, 92, 252, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #7C5CFC;
+}
+
+/* 8. High-Contrast Print & PDF Optimization */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .aurora-bg,
+  .ambient-light,
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  table {
+    width: 100% !important;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr,
+  .summary-card,
+  .report-kpi-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: always !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-bg,
+  .animate-color-cycle,
+  .animate-logo-glow,
+  .animate-breathing-glow,
+  .animate-blob-1,
+  .animate-blob-2,
+  .animate-blob-3,
+  .card-hover-border::before,
+  .animate-shimmer::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .deleting-card-anim {
+    animation: fade-out-reduced 0.15s ease-out forwards !important;
+    filter: none !important;
+  }
+
+  @keyframes fade-out-reduced {
+    to {
+      opacity: 0;
+      max-height: 0px;
+      margin: 0px !important;
+      padding: 0px !important;
+      border: 0px !important;
+    }
+  }
+}

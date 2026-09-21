@@ -7,11 +7,23 @@ export interface Member {
   badgeBg: string;
   avatarLetter: string;
   pin?: string;
+  avatarUrl?: string;
+  colorHex?: string;
 }
 
-export type CategoryName =
+export type ActiveCategoryName =
   | 'Food'
   | 'Snacks'
+  | 'Beverages'
+  | 'Transportation'
+  | 'Fuel'
+  | 'Recharge'
+  | 'Education/Fees'
+  | 'Personal & Lifestyle'
+  | 'Entertainment'
+  | 'Others';
+
+export type LegacyCategoryName =
   | 'Tea/Coffee'
   | 'Cool Drinks'
   | 'Beverages'
@@ -20,15 +32,12 @@ export type CategoryName =
   | 'Tobacco Products'
   | 'Liquor'
   | 'Alcohol'
-  | 'Transportation'
-  | 'Fuel'
-  | 'Recharge'
-  | 'Education/Fees'
   | 'Personal Care'
-  | 'Entertainment'
   | 'Shopping'
   | 'Medical'
-  | 'Others';
+  | 'Lifestyle & Care';
+
+export type CategoryName = ActiveCategoryName | LegacyCategoryName;
 
 export type PaymentMode = 'UPI' | 'Cash' | 'Card' | 'Friend Paid';
 
@@ -44,6 +53,7 @@ export interface Expense {
   quantity?: number;
   place?: string;
   notes?: string;
+  receiptUrl?: string;
   createdAt: string; // ISO string
   updatedAt?: string;
 }

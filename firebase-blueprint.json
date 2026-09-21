@@ -1,48 +1,63 @@
 {
   "entities": {
-    "Expense": {
+    "expense": {
       "title": "Expense",
-      "description": "Shared and personal expense record among roommates",
+      "description": "An individual expense transaction recorded by a member.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "member": { "type": "string", "enum": ["Nimal", "Etti", "Dharan", "Sanjai", "Santhosh"] },
-        "amount": { "type": "number" },
-        "category": { "type": "string" },
-        "description": { "type": "string" },
-        "date": { "type": "string" },
-        "time": { "type": "string" },
-        "paymentMode": { "type": "string" },
-        "splitWith": { "type": "array", "items": { "type": "string" } },
-        "splitRatio": { "type": "object" },
-        "isPersonalOnly": { "type": "boolean" },
-        "quantity": { "type": "number" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "id": { "type": "string", "description": "Unique identifier for the expense." },
+        "member": { "type": "string", "enum": ["Nimal", "Etti", "Dharan", "Sanjai", "Santhosh", "Sujhay"], "description": "The member who made the expense." },
+        "amount": { "type": "number", "description": "The amount spent." },
+        "category": { "type": "string", "description": "The category of the expense." },
+        "paymentMode": { "type": "string", "enum": ["UPI", "Cash", "Card", "Friend Paid"], "description": "The mode of payment used." },
+        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "The date of the expense in YYYY-MM-DD format." },
+        "time": { "type": "string", "description": "The time of the expense (HH:mm or ISO)." },
+        "itemName": { "type": "string", "description": "Optional name of the item purchased." },
+        "quantity": { "type": "number", "description": "Optional quantity of the item." },
+        "place": { "type": "string", "description": "Optional place where the expense occurred." },
+        "notes": { "type": "string", "description": "Optional notes for the expense." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the record was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the record was last updated." }
       },
-      "required": ["member", "amount", "category", "date", "paymentMode"]
+      "required": ["id", "member", "amount", "category", "paymentMode", "date", "createdAt"]
     },
-    "Budget": {
+    "budget": {
       "title": "Budget",
-      "description": "Monthly overall budget threshold",
+      "description": "Monthly budget settings for the group or individual members.",
       "type": "object",
       "properties": {
-        "month": { "type": "string" },
-        "amount": { "type": "number" },
-        "updatedAt": { "type": "string" }
+        "key": { "type": "string", "description": "Unique key for the budget (e.g., '2026-08' or 'Nimal_2026-08')." },
+        "month": { "type": "string", "pattern": "^\\d{4}-\\d{2}$", "description": "The month the budget applies to in YYYY-MM format." },
+        "member": { "type": "string", "enum": ["Nimal", "Etti", "Dharan", "Sanjai", "Santhosh", "Sujhay"], "description": "Optional member the budget belongs to." },
+        "amount": { "type": "number", "description": "The budget amount." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the record was last updated." }
       },
-      "required": ["month", "amount"]
+      "required": ["key", "month", "amount", "updatedAt"]
+    },
+    "avatar": {
+      "title": "Member Avatar",
+      "description": "Custom avatar photo or URL for a roommate.",
+      "type": "object",
+      "properties": {
+        "member": { "type": "string", "enum": ["Nimal", "Etti", "Dharan", "Sanjai", "Santhosh", "Sujhay"], "description": "The member whose avatar is being set." },
+        "avatarUrl": { "type": "string", "description": "Base64 data URL or external image URL for the avatar." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the avatar was last updated." }
+      },
+      "required": ["member", "updatedAt"]
     }
   },
   "firestore": {
     "/expenses/{expenseId}": {
-      "schema": "Expense",
-      "description": "Real-time ledger of room expenses"
+      "schema": "expense",
+      "description": "Collection of all expenses."
     },
-    "/budgets/{monthId}": {
-      "schema": "Budget",
-      "description": "Monthly room budget caps"
+    "/budgets/{budgetKey}": {
+      "schema": "budget",
+      "description": "Collection of monthly budgets."
+    },
+    "/avatars/{memberId}": {
+      "schema": "avatar",
+      "description": "Collection of member avatars."
     }
   }
 }

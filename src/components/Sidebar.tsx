@@ -1,8 +1,10 @@
 import React from 'react';
 import { ActiveTab, MemberName } from '../types';
 import { MEMBERS } from '../data/categories';
+import { useMemberAvatars } from '../hooks/useMemberAvatars';
 import { PWAInstallButton } from './PWAInstallButton';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { AppLogo } from './AppLogo';
 import {
   LayoutDashboard,
   PlusCircle,
@@ -40,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleDarkMode
 }) => {
   const { isOnline } = useOnlineStatus();
+  const { members } = useMemberAvatars();
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'add', label: 'Add Expense', icon: PlusCircle, highlight: true },
@@ -55,28 +58,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-64 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 min-h-screen flex flex-col justify-between border-r border-slate-200 dark:border-slate-800 shrink-0 transition-colors duration-200">
+    <aside className="w-64 bg-white dark:bg-[#080B18] text-slate-800 dark:text-slate-300 min-h-screen flex flex-col justify-between border-r border-slate-200 dark:border-slate-800 shrink-0 transition-colors duration-200">
       {/* Top Branding */}
       <div>
-        <div className="p-5 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80">
+        <div className="p-5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
-              <Wallet className="w-5 h-5" />
-            </div>
+            <AppLogo
+              size={42}
+              className="shrink-0 rounded-xl shadow-xs"
+              alt="Friends Tr$cker Logo"
+            />
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">Friends</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium -mt-0.5">Expense Tracker</p>
+              <div className="flex items-center gap-1 text-base font-extrabold text-slate-900 dark:text-[#F8FAFC] tracking-tight leading-none">
+                <span>Friends</span>
+                <span className="text-emerald-500 dark:text-emerald-400 font-black">
+                  Tr<span className="text-emerald-400 dark:text-emerald-300 font-black">$</span>cker
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-[#94A3B8] font-bold tracking-wider uppercase mt-1">
+                Expense Tracker
+              </p>
             </div>
           </div>
 
           {/* Network indicator pill */}
           <div className="flex items-center">
             {isOnline ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-500" title="Online: Synced">
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400" title="Online: Synced">
                 <Wifi className="w-3 h-3" />
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-500" title="Offline Mode Active">
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400" title="Offline Mode Active">
                 <WifiOff className="w-3 h-3 animate-pulse" />
               </span>
             )}
@@ -96,8 +108,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => onSelectTab(targetTab)}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   isActive
-                    ? 'bg-indigo-600 text-white font-semibold shadow-sm shadow-indigo-500/20'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                    ? 'bg-gradient-to-r from-[#7C5CFC] to-[#22D3EE] text-white font-bold shadow-md shadow-[#7C5CFC]/25'
+                    : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#151D35]/60'
                 }`}
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
@@ -120,21 +132,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
             MEMBERS
           </span>
           <div className="space-y-1">
-            {MEMBERS.map((member) => {
+            {members.map((member) => {
               const isCurrent = currentMember === member.name;
               return (
                 <button
                   key={member.id}
                   onClick={() => onSelectMember(member.name)}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-sm transition-all ${
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-sm transition-all cursor-pointer ${
                     isCurrent
                       ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className={`w-6 h-6 rounded-full ${member.avatarColor} flex items-center justify-center text-xs font-bold`}>
-                      {member.avatarLetter}
+                    <div className={`w-6 h-6 rounded-full ${
+                      member.avatarUrl ? 'bg-slate-800' : member.avatarColor
+                    } flex items-center justify-center text-xs font-bold overflow-hidden shrink-0`}>
+                      {member.avatarUrl ? (
+                        <img src={member.avatarUrl} alt={member.name} className="w-full h-full object-cover rounded-full" />
+                      ) : (
+                        member.avatarLetter
+                      )}
                     </div>
                     <span>{member.name}</span>
                   </div>

@@ -1,18 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Expense, MemberName } from '../types';
-import { MEMBERS } from '../data/categories';
+import { normalizeCategoryName } from '../data/categories';
 import { generateMonthlyPdf } from '../services/pdfReport';
-import { calculateSummaryMetrics, calculateWeeklySpending, getTopSpendingItems, formatCurrency, filterExpenses } from '../utils/analytics';
-import { db } from '../services/storage';
+import { calculateSummaryMetrics, getTopSpendingItems, formatCurrency, filterExpenses, sortExpensesDescending } from '../utils/analytics';
 import {
   FileText,
   Download,
-  Share2,
-  Table,
   CheckCircle2,
-  Calendar,
-  Sparkles,
   ArrowRight,
   RefreshCw,
   FileSpreadsheet,
@@ -28,6 +23,7 @@ interface ReportsViewProps {
   availableMonths: { value: string; label: string }[];
   currentMember?: MemberName;
   onRefreshData: () => void;
+  onOpenPdfImporter?: () => void;
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({
@@ -36,22 +32,26 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   onSelectMonth,
   availableMonths,
   currentMember = 'Nimal',
-  onRefreshData
+  onRefreshData,
+  onOpenPdfImporter
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [exportScope, setExportScope] = useState<'group' | MemberName>('group');
 
-  const reportMonthStr = selectedMonth === 'all' ? '2026-08' : selectedMonth;
+  const reportMonthStr = selectedMonth === 'all' ? 'All-Time Summary' : selectedMonth;
   const isPersonal = exportScope !== 'group';
   const targetMember = isPersonal ? exportScope : undefined;
 
   // Filter current expenses using unified pipeline
-  const currentExpenses = filterExpenses(
-    expenses,
-    selectedMonth,
-    undefined,
-    targetMember || 'All'
+  const currentExpenses = sortExpensesDescending(
+    filterExpenses(
+      expenses,
+      selectedMonth,
+      undefined,
+      targetMember || 'All'
+    )
   );
 
   const previousMonthStr = reportMonthStr === '2026-09' ? '2026-08' : '2026-07';
@@ -64,6 +64,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   const summary = calculateSummaryMetrics(currentExpenses, previousExpenses);
   const topItems = getTopSpendingItems(currentExpenses, 10);
+
+  // Payment mode breakdown
+  const paymentModeMap = new Map<string, number>();
+  currentExpenses.forEach(e => {
+    paymentModeMap.set(e.paymentMode, (paymentModeMap.get(e.paymentMode) || 0) + e.amount);
+  });
+  const paymentBreakdown = Array.from(paymentModeMap.entries())
+    .map(([mode, amount]) => ({
+      mode,
+      amount,
+      percentage: summary.totalExpense > 0 ? Math.round((amount / summary.totalExpense) * 100) : 0
+    }))
+    .sort((a, b) => b.amount - a.amount);
 
   const handleDownloadPdf = () => {
     setIsGenerating(true);
@@ -88,7 +101,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       e.date,
       e.time || '',
       e.member,
-      e.category,
+      normalizeCategoryName(e.category),
       `"${(e.itemName || '').replace(/"/g, '""')}"`,
       e.quantity || 1,
       e.amount,
@@ -112,9 +125,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   };
 
   const handleExportJson = () => {
-    const exportData = isPersonal
+    const rawData = isPersonal
       ? expenses.filter(e => e.member === targetMember)
       : expenses;
+    const exportData = rawData.map(e => ({
+      ...e,
+      category: normalizeCategoryName(e.category)
+    }));
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
@@ -127,24 +144,25 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   };
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      className="space-y-6 pb-16 max-w-5xl mx-auto"
+      className="space-y-6 pb-28 sm:pb-16 max-w-5xl mx-auto"
     >
       
       {/* Header Banner & PDF Trigger */}
-      <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 text-white p-6 rounded-3xl border border-indigo-800/40 shadow-xl space-y-4">
+      <div className="bg-gradient-to-br from-[#10162A] via-[#151D35] to-[#080B18] text-white p-6 rounded-3xl border border-slate-800 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <div className="p-2 rounded-xl bg-[#7C5CFC]/20 text-[#22D3EE] border border-[#7C5CFC]/30">
                 <FileText className="w-5 h-5" />
               </div>
-              <h2 className="text-xl font-bold tracking-tight">Monthly Expense Reports</h2>
+              <h2 className="text-xl font-bold tracking-tight text-[#F8FAFC]">Monthly Expense Reports</h2>
             </div>
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-[#94A3B8]">
               Generate pixel-perfect PDF reports and CSV exports with member-classified transaction ledgers.
             </p>
           </div>
@@ -152,13 +170,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           {/* Controls: Month and Scope */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Scope Selector */}
-            <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-2xl border border-slate-700">
+            <div className="flex items-center gap-1.5 bg-[#080B18] p-1 rounded-2xl border border-slate-800">
               <button
                 type="button"
                 onClick={() => setExportScope('group')}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   exportScope === 'group'
-                    ? 'bg-indigo-600 text-white shadow-sm'
+                    ? 'bg-gradient-to-r from-[#7C5CFC] to-[#22D3EE] text-white shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -170,7 +188,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 onClick={() => setExportScope(currentMember)}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   exportScope === currentMember
-                    ? 'bg-indigo-600 text-white shadow-sm'
+                    ? 'bg-gradient-to-r from-[#7C5CFC] to-[#22D3EE] text-white shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -183,10 +201,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <select
               value={selectedMonth}
               onChange={(e) => onSelectMonth(e.target.value)}
-              className="bg-slate-800 text-white font-bold text-xs sm:text-sm px-3.5 py-2.5 rounded-2xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="bg-[#080B18] text-[#F8FAFC] font-bold text-xs sm:text-sm px-3.5 py-2.5 rounded-2xl border border-slate-800 focus:outline-none focus:ring-1 focus:ring-cyan-400"
             >
-              <option value="all">All Months</option>
-              {availableMonths.map((m) => (
+              {Array.from(
+                new Map(
+                  [
+                    { value: 'all', label: 'All Months' },
+                    ...(availableMonths || [])
+                  ].map(m => [m.value, m])
+                ).values()
+              ).map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.label}
                 </option>
@@ -195,43 +219,53 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons Row */}
-        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-800">
+        {/* Symmetrical 2x2 Actions Grid */}
+        <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800/80">
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.96 }}
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
             onClick={handleDownloadPdf}
             disabled={isGenerating}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer disabled:opacity-50"
+            className="w-full h-12 px-3 sm:px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            <Download className="w-4 h-4" />
-            <span>
+            <Download className="w-4 h-4 shrink-0" />
+            <span className="truncate">
               {isGenerating 
                 ? 'Generating PDF...' 
                 : isPersonal 
-                ? `Download ${targetMember}'s PDF (${reportMonthStr})` 
-                : `Download Group PDF (${reportMonthStr})`}
+                ? `PDF (${targetMember})` 
+                : `Group PDF`}
             </span>
           </motion.button>
 
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={handleExportCsv}
-            className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold border border-slate-700 transition-all cursor-pointer"
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onOpenPdfImporter}
+            className="w-full h-12 px-3 sm:px-4 rounded-2xl bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-200 hover:text-white text-xs sm:text-sm font-bold border border-indigo-700/50 hover:border-indigo-600 transition-all cursor-pointer flex items-center justify-center gap-2"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            <span>Export CSV {isPersonal ? `(${targetMember})` : '(Group)'}</span>
+            <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="truncate">Import PDF</span>
           </motion.button>
 
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={handleExportJson}
-            className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold border border-slate-700 transition-all cursor-pointer"
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleExportCsv}
+            className="w-full h-12 px-3 sm:px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-bold border border-slate-700 hover:border-slate-600 transition-all cursor-pointer flex items-center justify-center gap-2"
           >
-            <Layers className="w-4 h-4 text-amber-400" />
-            <span>JSON Backup</span>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="truncate">Export CSV</span>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleExportJson}
+            className="w-full h-12 px-3 sm:px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-bold border border-slate-700 hover:border-slate-600 transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Layers className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="truncate">JSON Backup</span>
           </motion.button>
         </div>
       </div>
@@ -281,10 +315,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Top Categories in Period */}
+        {/* Card 2: Top Categories & Payment Modes */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>📊 Top Categories ({reportMonthStr})</span>
+            <span>📊 Category Breakdown ({reportMonthStr})</span>
           </h3>
 
           {summary.categoryArray.length === 0 ? (
@@ -292,7 +326,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               No transactions recorded for this period.
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {summary.categoryArray.slice(0, 5).map((cat) => (
                 <div key={cat.category} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
@@ -301,7 +335,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       {formatCurrency(cat.amount)} <span className="text-[10px] text-slate-400 font-normal">({cat.percentage}%)</span>
                     </span>
                   </div>
-                  <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-indigo-600 rounded-full transition-all duration-300"
                       style={{ width: `${Math.min(cat.percentage, 100)}%` }}
@@ -309,6 +343,33 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Payment Mode Distribution with Aligned Bars */}
+          {paymentBreakdown.length > 0 && (
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span>💳 Payment Modes</span>
+              </h4>
+              <div className="space-y-2.5">
+                {paymentBreakdown.map((pm) => (
+                  <div key={pm.mode} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">{pm.mode}</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {formatCurrency(pm.amount)} <span className="text-[10px] text-slate-400 font-normal">({pm.percentage}%)</span>
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(pm.percentage, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -340,7 +401,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {topItems.map((item, index) => (
-                  <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 font-medium">
+                  <tr key={`rep-top-${item.id}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 font-medium">
                     <td className="py-2.5 px-3 text-slate-400">{index + 1}</td>
                     <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">{item.date}</td>
                     <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">{item.member}</td>
@@ -358,5 +419,45 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       </div>
 
     </motion.div>
+
+    {/* Notification Toasts & Status Overlay */}
+    <AnimatePresence>
+      {(statusMessage || successToast) && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 20, scale: 0.95 }}
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm"
+        >
+          <div className={`p-4 rounded-3xl shadow-2xl border flex items-center gap-3 backdrop-blur-md ${
+            statusMessage 
+              ? 'bg-indigo-600/90 border-indigo-400 text-white' 
+              : 'bg-emerald-600/90 border-emerald-400 text-white'
+          }`}>
+            <div className="shrink-0">
+              {statusMessage ? (
+                <RefreshCw className="w-5 h-5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold truncate">
+                {statusMessage || successToast}
+              </p>
+            </div>
+            {!statusMessage && (
+              <button 
+                onClick={() => setSuccessToast(null)}
+                className="p-1 hover:bg-white/20 rounded-full transition-colors"
+              >
+                <ArrowRight className="w-4 h-4 rotate-45" />
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 };

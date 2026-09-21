@@ -80,21 +80,21 @@ export function parseNaturalLanguageExpense(transcript: string): ParsedSpeechExp
   }
 
   // 4. Extract Category and Specific Items
-  // Check Tobacco Products first (priority for specific items)
+  // Check Tobacco/Smokes items -> mapped to Others
   if (/\b(coolip|coollip|hans|cigarette|cig|smoke|beedi|bidi|mint|kings|tobacco)\b/i.test(text)) {
-    category = 'Tobacco Products';
+    category = 'Others';
     if (/\bcoolip|coollip\b/i.test(text)) itemName = 'Coolip';
     else if (/\bhans\b/i.test(text)) itemName = 'Hans';
     else if (/\bcigarette|cig|smoke|kings\b/i.test(text)) itemName = 'Cigarette';
     else if (/\bmint\b/i.test(text)) itemName = 'Mint';
   } else if (/\b(tea|chai|green tea)\b/i.test(text)) {
-    category = 'Beverages';
+    category = 'Snacks';
     itemName = 'Tea';
   } else if (/\b(coffee|cold coffee|filter coffee)\b/i.test(text)) {
-    category = 'Beverages';
+    category = 'Snacks';
     itemName = 'Coffee';
   } else if (/\b(juice|shake|smoothie|soda|frooti|sting|coke|pepsi|cool drink|lemon juice|beverage|beverages)\b/i.test(text)) {
-    category = 'Beverages';
+    category = 'Snacks';
     const juiceMatch = text.match(/\b(juice|shake|smoothie|soda|frooti|sting|coke|pepsi|cool drink|lemon juice)\b/i);
     itemName = juiceMatch ? (juiceMatch[1].charAt(0).toUpperCase() + juiceMatch[1].slice(1)) : 'Juice';
   } else if (/\b(snack|snacks|samosa|puff|chips|biscuit|biscuits|cookies|vadai|vada|bajji|mixture)\b/i.test(text)) {
@@ -115,17 +115,20 @@ export function parseNaturalLanguageExpense(transcript: string): ParsedSpeechExp
     const foodItems = text.match(/\b(biryani|parotta|dosa|shawarma|chicken|egg|fried rice|noodles|meals|lunch|dinner|breakfast)\b/i);
     itemName = foodItems ? (foodItems[1].charAt(0).toUpperCase() + foodItems[1].slice(1)) : undefined;
   } else if (/\b(alcohol|beer|liquor|wine|brandy|whiskey)\b/i.test(text)) {
-    category = 'Alcohol';
-    itemName = 'Alcohol';
+    category = 'Others';
+    itemName = 'Drinks';
   } else if (/\b(movie|cinema|film|entertainment|game|theatre|theater|netflix|prime)\b/i.test(text)) {
     category = 'Entertainment';
     itemName = /\bmovie|cinema|film\b/i.test(text) ? 'Movie Ticket' : undefined;
   } else if (/\b(recharge|mobile|phone recharge|jio|airtel|vi|data)\b/i.test(text)) {
     category = 'Recharge';
     itemName = 'Mobile Recharge';
-  } else if (/\b(haircut|salon|shave|grooming|spa|personal care)\b/i.test(text)) {
-    category = 'Personal Care';
-    itemName = 'Haircut';
+  } else if (/\b(haircut|salon|shave|grooming|spa|personal care|shopping|clothes|shirt|pants|shoes|dress|medical|medicine|doctor|pharmacy|tablet|tablets|syrup)\b/i.test(text)) {
+    category = 'Personal & Lifestyle';
+    if (/\bhaircut|salon|shave|grooming|spa\b/i.test(text)) itemName = 'Haircut & Salon';
+    else if (/\bclothes|shirt|pants|shoes|dress\b/i.test(text)) itemName = 'Shopping';
+    else if (/\bmedicine|doctor|pharmacy|tablet|tablets|syrup\b/i.test(text)) itemName = 'Medicine';
+    else itemName = 'Personal & Lifestyle';
   } else if (/\b(education|college|book|books|xerox|printout|fees|exam|pen|pencil|notes)\b/i.test(text)) {
     category = 'Education/Fees';
     if (/\bxerox|printout\b/i.test(text)) itemName = 'Xerox & Printout';

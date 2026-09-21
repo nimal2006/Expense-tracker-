@@ -1,16 +1,83 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /expenses/{expenseId} {
-      allow read, write: if true;
-    }
-
-    match /budgets/{monthId} {
-      allow read, write: if true;
-    }
-
+    // Default deny
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity Validations
+    function isValidExpense(data) {
+      return data.keys().hasAll(['id', 'member', 'amount', 'category', 'paymentMode', 'date', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'member', 'amount', 'category', 'paymentMode', 'date', 'time', 'itemName', 'quantity', 'place', 'notes', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.member in ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'] &&
+             data.amount is number && data.amount >= 0 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.paymentMode in ['UPI', 'Cash', 'Card', 'Friend Paid'] &&
+             data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+             data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidBudget(data) {
+      return data.keys().hasAll(['key', 'month', 'amount', 'updatedAt']) &&
+             data.keys().hasOnly(['key', 'month', 'amount', 'member', 'updatedAt']) &&
+             data.key is string && data.key.size() <= 128 &&
+             data.month is string && data.month.matches('^\\d{4}-\\d{2}$') &&
+             data.amount is number && data.amount >= 0 &&
+             data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    function isValidAvatar(data) {
+      return data.keys().hasAll(['member', 'updatedAt']) &&
+             data.keys().hasOnly(['member', 'avatarUrl', 'updatedAt']) &&
+             data.member in ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'] &&
+             (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 400000)) &&
+             data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    // Connection testing
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // Collection Rules
+    match /expenses/{expenseId} {
+      // Allow public access for this shared group ledger
+      allow read: if true;
+      allow create: if isValidId(expenseId) && isValidExpense(incoming());
+      allow update: if isValidId(expenseId) && isValidExpense(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['member', 'amount', 'category', 'paymentMode', 'date', 'time', 'itemName', 'quantity', 'place', 'notes', 'updatedAt'])
+      );
+      allow delete: if true && isValidId(expenseId);
+    }
+
+    match /budgets/{budgetKey} {
+      allow read: if true;
+      allow write: if isValidId(budgetKey) && isValidBudget(incoming());
+    }
+
+    match /avatars/{memberId} {
+      allow read: if true;
+      allow write: if isValidId(memberId) && isValidAvatar(incoming());
+      allow delete: if true && isValidId(memberId);
     }
   }
 }

@@ -1,7 +1,8 @@
-import { CategoryName, PaymentMode } from '../types';
+import { CategoryName, ActiveCategoryName, PaymentMode, Member, MemberName } from '../types';
+import { getMemberAvatar } from '../utils/memberAvatars';
 
 export interface CategoryMeta {
-  name: CategoryName;
+  name: ActiveCategoryName;
   color: string;
   bgColor: string;
   textColor: string;
@@ -24,23 +25,7 @@ export const CATEGORIES: CategoryMeta[] = [
     bgColor: 'bg-amber-50 dark:bg-amber-950/40',
     textColor: 'text-amber-600 dark:text-amber-400',
     iconName: 'Cookie',
-    commonItems: ['Samosa', 'Egg puffs', 'Sweet puffs', 'Jam bun', 'Ice cream', 'Smoodh', 'Kitkat', 'Chew bites', 'Peanut Candy', 'Bonda', 'Roll']
-  },
-  {
-    name: 'Tea/Coffee',
-    color: '#06B6D4', // Cyan
-    bgColor: 'bg-cyan-50 dark:bg-cyan-950/40',
-    textColor: 'text-cyan-600 dark:text-cyan-400',
-    iconName: 'Coffee',
-    commonItems: ['Tea', 'Coffee', 'Tea,Vada', 'Tea coffee']
-  },
-  {
-    name: 'Cool Drinks',
-    color: '#0EA5E9', // Sky
-    bgColor: 'bg-sky-50 dark:bg-sky-950/40',
-    textColor: 'text-sky-600 dark:text-sky-400',
-    iconName: 'Wine',
-    commonItems: ['Waterbottle', 'Rosemilk', 'Paneer soda', 'Milkshake', 'Goli soda', 'Smooth', 'Slice']
+    commonItems: ['Samosa', 'Egg puffs', 'Sweet puffs', 'Jam bun', 'Ice cream', 'Smoodh', 'Kitkat', 'Bonda', 'Roll', 'Chips', 'Biscuits']
   },
   {
     name: 'Beverages',
@@ -48,63 +33,7 @@ export const CATEGORIES: CategoryMeta[] = [
     bgColor: 'bg-cyan-50 dark:bg-cyan-950/40',
     textColor: 'text-cyan-600 dark:text-cyan-400',
     iconName: 'Coffee',
-    commonItems: ['Tea', 'Coffee', 'Juice', 'Milkshake', 'Soft Drinks', 'Waterbottle', 'Rosemilk', 'Paneer soda', 'Goli soda', 'Buttermilk']
-  },
-  {
-    name: 'Cigarette',
-    color: '#8B5CF6', // Purple
-    bgColor: 'bg-purple-50 dark:bg-purple-950/40',
-    textColor: 'text-purple-600 dark:text-purple-400',
-    iconName: 'Flame',
-    commonItems: ['Mint', 'Kings', 'Wave', 'Gold Filter']
-  },
-  {
-    name: 'Hans',
-    color: '#A855F7', // Purple/Violet
-    bgColor: 'bg-purple-50 dark:bg-purple-950/40',
-    textColor: 'text-purple-600 dark:text-purple-400',
-    iconName: 'Flame',
-    commonItems: ['Hans', 'Boi kadai', 'Don', 'CL']
-  },
-  {
-    name: 'Tobacco Products',
-    color: '#8B5CF6', // Purple
-    bgColor: 'bg-purple-50 dark:bg-purple-950/40',
-    textColor: 'text-purple-600 dark:text-purple-400',
-    iconName: 'Flame',
-    commonItems: ['Coolip', 'Hans', 'Cigarette', 'Mint', 'Kings', 'Wave', 'Gold Filter', 'CL', 'Don']
-  },
-  {
-    name: 'Liquor',
-    color: '#EC4899', // Pink
-    bgColor: 'bg-pink-50 dark:bg-pink-950/40',
-    textColor: 'text-pink-600 dark:text-pink-400',
-    iconName: 'Wine',
-    commonItems: ['Beer', 'British', 'Bacadi']
-  },
-  {
-    name: 'Alcohol',
-    color: '#EC4899', // Pink
-    bgColor: 'bg-pink-50 dark:bg-pink-950/40',
-    textColor: 'text-pink-600 dark:text-pink-400',
-    iconName: 'Wine',
-    commonItems: ['Beer', 'British', 'Bacadi', 'Liquor']
-  },
-  {
-    name: 'Shopping',
-    color: '#F43F5E', // Rose
-    bgColor: 'bg-rose-50 dark:bg-rose-950/40',
-    textColor: 'text-rose-600 dark:text-rose-400',
-    iconName: 'ShoppingBag',
-    commonItems: ['Clothes', 'Shoes', 'Electronics']
-  },
-  {
-    name: 'Medical',
-    color: '#EF4444', // Red
-    bgColor: 'bg-red-50 dark:bg-red-950/40',
-    textColor: 'text-red-600 dark:text-red-400',
-    iconName: 'HeartPulse',
-    commonItems: ['Medicine', 'Doctor', 'Pharmacy']
+    commonItems: ['Tea', 'Coffee', 'Cool Drinks', 'Fresh Juice', 'Water Bottle', 'Milkshake', 'Soda']
   },
   {
     name: 'Transportation',
@@ -132,19 +61,19 @@ export const CATEGORIES: CategoryMeta[] = [
   },
   {
     name: 'Education/Fees',
-    color: '#6366F1', // Indigo
-    bgColor: 'bg-indigo-50 dark:bg-indigo-950/40',
-    textColor: 'text-indigo-600 dark:text-indigo-400',
+    color: '#8B5CF6', // Purple
+    bgColor: 'bg-purple-50 dark:bg-purple-950/40',
+    textColor: 'text-purple-600 dark:text-purple-400',
     iconName: 'GraduationCap',
-    commonItems: ['Sem fees', 'NPTEL', 'JLPT', 'Japanese Class', 'Association fees', 'Exam fees']
+    commonItems: ['Sem fees', 'NPTEL', 'JLPT', 'Japanese Class', 'Association fees', 'Exam fees', 'Books', 'Xerox']
   },
   {
-    name: 'Personal Care',
+    name: 'Personal & Lifestyle',
     color: '#F43F5E', // Rose
     bgColor: 'bg-rose-50 dark:bg-rose-950/40',
     textColor: 'text-rose-600 dark:text-rose-400',
-    iconName: 'Scissors',
-    commonItems: ['Haircut', 'Guru Saloon', 'Shaving', 'Spa', 'Grooming']
+    iconName: 'ShoppingBag',
+    commonItems: ['Haircut', 'Clothes', 'Medicine', 'Guru Saloon', 'Doctor', 'Pharmacy', 'Shoes', 'Shaving', 'Spa', 'Grooming', 'Electronics']
   },
   {
     name: 'Entertainment',
@@ -164,50 +93,131 @@ export const CATEGORIES: CategoryMeta[] = [
   }
 ];
 
+/**
+ * Maps legacy/removed category names to their active consolidated category:
+ * - 'Personal Care' | 'Shopping' | 'Medical' | 'Lifestyle & Care' -> 'Personal & Lifestyle'
+ * - 'Tea/Coffee' | 'Cool Drinks' | 'Beverages' -> 'Snacks'
+ * - 'Cigarette' | 'Hans' | 'Tobacco Products' | 'Liquor' | 'Alcohol' -> 'Others'
+ */
+export function normalizeCategoryName(rawCategory?: string): ActiveCategoryName {
+  if (!rawCategory) return 'Others';
+  const trimmed = rawCategory.trim();
+
+  // Consolidated into Personal & Lifestyle
+  if (
+    trimmed === 'Personal Care' ||
+    trimmed === 'Shopping' ||
+    trimmed === 'Medical' ||
+    trimmed === 'Personal & Lifestyle' ||
+    trimmed === 'Lifestyle & Care'
+  ) {
+    return 'Personal & Lifestyle';
+  }
+
+  // Mapped to Beverages
+  if (
+    trimmed === 'Tea/Coffee' ||
+    trimmed === 'Cool Drinks' ||
+    trimmed === 'Beverages'
+  ) {
+    return 'Beverages';
+  }
+
+  // Mapped to Others
+  if (
+    trimmed === 'Cigarette' ||
+    trimmed === 'Hans' ||
+    trimmed === 'Tobacco Products' ||
+    trimmed === 'Liquor' ||
+    trimmed === 'Alcohol'
+  ) {
+    return 'Others';
+  }
+
+  // Check if it already matches an active category
+  const match = CATEGORIES.find(c => c.name.toLowerCase() === trimmed.toLowerCase());
+  if (match) {
+    return match.name;
+  }
+
+  return 'Others';
+}
+
+/**
+ * Returns CategoryMeta for any category name (including legacy or historical names).
+ * Always returns a valid CategoryMeta object, falling back to 'Others'.
+ */
+export function getCategoryMeta(rawCategory?: string): CategoryMeta {
+  const normalized = normalizeCategoryName(rawCategory);
+  return CATEGORIES.find(c => c.name === normalized) || CATEGORIES[CATEGORIES.length - 1];
+}
+
 export const MEMBERS = [
   {
     id: 'nimal',
     name: 'Nimal' as const,
-    avatarColor: 'bg-indigo-600 text-white',
-    badgeBg: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
-    avatarLetter: 'N'
+    avatarColor: 'bg-[#7C5CFC] text-white',
+    badgeBg: 'bg-[#7C5CFC]/15 text-[#a78bfa] border-[#7C5CFC]/30',
+    avatarLetter: 'N',
+    colorHex: '#7C5CFC'
   },
   {
     id: 'etti',
     name: 'Etti' as const,
-    avatarColor: 'bg-emerald-600 text-white',
-    badgeBg: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
-    avatarLetter: 'E'
+    avatarColor: 'bg-[#10B981] text-white',
+    badgeBg: 'bg-[#10B981]/15 text-[#34d399] border-[#10B981]/30',
+    avatarLetter: 'E',
+    colorHex: '#10B981'
   },
   {
     id: 'dharan',
     name: 'Dharan' as const,
-    avatarColor: 'bg-amber-600 text-white',
-    badgeBg: 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-    avatarLetter: 'D'
+    avatarColor: 'bg-[#F97316] text-white',
+    badgeBg: 'bg-[#F97316]/15 text-[#fb923c] border-[#F97316]/30',
+    avatarLetter: 'D',
+    colorHex: '#F97316'
   },
   {
     id: 'sanjai',
     name: 'Sanjai' as const,
-    avatarColor: 'bg-blue-600 text-white',
-    badgeBg: 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
-    avatarLetter: 'S'
+    avatarColor: 'bg-[#3B82F6] text-white',
+    badgeBg: 'bg-[#3B82F6]/15 text-[#60a5fa] border-[#3B82F6]/30',
+    avatarLetter: 'S',
+    colorHex: '#3B82F6'
   },
   {
     id: 'santhosh',
     name: 'Santhosh' as const,
-    avatarColor: 'bg-purple-600 text-white',
-    badgeBg: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
-    avatarLetter: 'St'
+    avatarColor: 'bg-[#EC4899] text-white',
+    badgeBg: 'bg-[#EC4899]/15 text-[#f472b6] border-[#EC4899]/30',
+    avatarLetter: 'St',
+    colorHex: '#EC4899'
   },
   {
     id: 'sujhay',
     name: 'Sujhay' as const,
-    avatarColor: 'bg-rose-600 text-white',
-    badgeBg: 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
-    avatarLetter: 'Sj'
+    avatarColor: 'bg-[#22D3EE] text-slate-950 font-black',
+    badgeBg: 'bg-[#22D3EE]/15 text-[#22d3ee] border-[#22D3EE]/30',
+    avatarLetter: 'Sj',
+    colorHex: '#22D3EE'
   }
 ];
+
+export function getMemberWithAvatar(name: MemberName): Member {
+  const base = MEMBERS.find(m => m.name === name) || MEMBERS[0];
+  const avatarUrl = getMemberAvatar(name);
+  return {
+    ...base,
+    avatarUrl
+  };
+}
+
+export function getAllMembersWithAvatars(): Member[] {
+  return MEMBERS.map(m => ({
+    ...m,
+    avatarUrl: getMemberAvatar(m.name)
+  }));
+}
 
 export const PAYMENT_MODES: { name: PaymentMode; iconName: string; color: string; badge: string }[] = [
   { name: 'UPI', iconName: 'QrCode', color: '#6366F1', badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' },

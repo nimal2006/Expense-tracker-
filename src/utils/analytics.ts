@@ -1,4 +1,5 @@
 import { Expense, MemberName, CategoryName, PaymentMode, SmartInsight } from '../types';
+import { normalizeCategoryName } from '../data/categories';
 
 /**
  * Returns YYYY-MM-DD string in the user's local timezone (e.g. 2026-09-02 for Sep 2 in IST).
@@ -8,6 +9,150 @@ export function getLocalDateString(d: Date = new Date()): string {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns YYYY-MM-DD string for yesterday in user's local timezone.
+ */
+export function getYesterdayLocalDateString(d: Date = new Date()): string {
+  const yesterday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
+  return getLocalDateString(yesterday);
+}
+
+/**
+ * Returns HH:mm string in user's local timezone (e.g. "15:26").
+ */
+export function getCurrentLocalTimeString(d: Date = new Date()): string {
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+/**
+ * Accurately formats a date string into "Today", "Yesterday", or formatted "D MMM YYYY".
+ * Compares strictly against user's current local date in their active timezone.
+ */
+export function formatRelativeDate(rawDate?: string): string {
+  if (!rawDate) return '';
+  const now = new Date();
+  const todayStr = getLocalDateString(now);
+  const yesterdayStr = getYesterdayLocalDateString(now);
+
+  if (rawDate === todayStr) {
+    return 'Today';
+  }
+  if (rawDate === yesterdayStr) {
+    return 'Yesterday';
+  }
+  return formatDateDisplay(rawDate);
+}
+
+/**
+ * Safely parses an expense date and time into an epoch timestamp (milliseconds).
+ * Ensures valid numerical timestamps without producing NaN on legacy time formats ('0', '1', '2') or missing times.
+ */
+export function getExpenseTimestamp(expense: { date?: string; time?: string; createdAt?: string }): number {
+  if (!expense) return 0;
+  const dateStr = expense.date || (expense.createdAt ? expense.createdAt.substring(0, 10) : '');
+  if (!dateStr) return 0;
+
+  const dateParts = dateStr.split('-');
+  if (dateParts.length !== 3) {
+    const parsed = new Date(dateStr).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+
+  const year = parseInt(dateParts[0], 10);
+  const month = parseInt(dateParts[1], 10) - 1;
+  const day = parseInt(dateParts[2], 10);
+
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return 0;
+
+  let hours = 12;
+  let minutes = 0;
+  let seconds = 0;
+
+  const timeStr = expense.time;
+  if (timeStr && timeStr.includes(':')) {
+    const tParts = timeStr.split(':');
+    const h = parseInt(tParts[0], 10);
+    const m = parseInt(tParts[1], 10);
+    const s = tParts[2] ? parseInt(tParts[2], 10) : 0;
+    if (!isNaN(h)) hours = h;
+    if (!isNaN(m)) minutes = m;
+    if (!isNaN(s)) seconds = s;
+  } else if (timeStr === '0') {
+    hours = 10;
+    minutes = 0;
+  } else if (timeStr === '1') {
+    hours = 18;
+    minutes = 30;
+  } else if (timeStr === '2') {
+    hours = 21;
+    minutes = 0;
+  } else if (expense.createdAt && expense.createdAt.includes('T')) {
+    const timeSub = expense.createdAt.split('T')[1];
+    if (timeSub && timeSub.length >= 5) {
+      const [hStr, mStr] = timeSub.substring(0, 5).split(':');
+      const h = parseInt(hStr, 10);
+      const m = parseInt(mStr, 10);
+      if (!isNaN(h)) hours = h;
+      if (!isNaN(m)) minutes = m;
+    }
+  }
+
+  return new Date(year, month, day, hours, minutes, seconds).getTime();
+}
+
+/**
+ * Sorts an array of expenses in strict descending chronological order (newest first).
+ * Primary sort: Date (e.g., 31 Aug -> 30 Aug -> ... -> 1 Aug)
+ * Secondary sort: Time / Session timestamp
+ * Tertiary sort: createdAt / ID
+ */
+export function sortExpensesDescending<T extends Expense>(expenses: T[]): T[] {
+  return [...expenses].sort((a, b) => {
+    const dateA = a.date || '';
+    const dateB = b.date || '';
+    if (dateA !== dateB) {
+      return dateB.localeCompare(dateA);
+    }
+    const tsA = getExpenseTimestamp(a);
+    const tsB = getExpenseTimestamp(b);
+    if (tsA !== tsB) {
+      return tsB - tsA;
+    }
+    const cA = a.createdAt || '';
+    const cB = b.createdAt || '';
+    if (cA && cB && cA !== cB) {
+      return cB.localeCompare(cA);
+    }
+    return String(b.id || '').localeCompare(String(a.id || ''));
+  });
+}
+
+/**
+ * Ensures no expense timestamp exceeds current real-time clock (new Date()).
+ * If date is in the future, clamps to today.
+ * If date is today and time is ahead of local time, clamps to current local time.
+ */
+export function clampTimestampToNow(dateStr: string, timeStr?: string): { date: string; time: string } {
+  const now = new Date();
+  const todayStr = getLocalDateString(now);
+  const currentHHMM = getCurrentLocalTimeString(now);
+
+  let date = dateStr || todayStr;
+  let time = timeStr || currentHHMM;
+
+  if (date > todayStr) {
+    date = todayStr;
+  }
+
+  if (date === todayStr && time > currentHHMM) {
+    time = currentHHMM;
+  }
+
+  return { date, time };
 }
 
 /**
@@ -39,6 +184,74 @@ export function formatExactCurrency(amount: number): string {
   return '₹' + amount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+/**
+ * Robust, clean formatter for time strings.
+ * Handles legacy '0', '1', ISO createdAt, and HH:mm format without trailing truncation.
+ */
+export function formatTimeDisplay(timeStr?: string, createdAt?: string): string {
+  if (timeStr && timeStr.includes(':')) {
+    const parts = timeStr.split(':');
+    const h = parseInt(parts[0], 10);
+    const m = parts[1] ? parts[1].substring(0, 2).padStart(2, '0') : '00';
+    if (!isNaN(h)) {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return `${h12}:${m} ${ampm}`;
+    }
+    return timeStr;
+  }
+  
+  if (createdAt && createdAt.includes('T')) {
+    const timeSub = createdAt.split('T')[1];
+    if (timeSub && timeSub.length >= 5) {
+      const [hStr, mStr] = timeSub.substring(0, 5).split(':');
+      const h = parseInt(hStr, 10);
+      if (!isNaN(h)) {
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        return `${h12}:${mStr} ${ampm}`;
+      }
+    }
+  }
+
+  // Handle single digit session markers from dataset (0 = Morning, 1 = Evening, 2 = Night)
+  if (timeStr === '0') return '10:00 AM';
+  if (timeStr === '1') return '06:30 PM';
+  if (timeStr === '2') return '09:00 PM';
+
+  return '12:00 PM';
+}
+
+/**
+ * Determines clean display title and whether a specific item description exists.
+ * If itemName is empty, '-', or identical to category, promotes category as the main title
+ * and suppresses redundant duplicate category badges.
+ */
+export function getTransactionDisplay(expense: Expense): { title: string; hasSpecificItem: boolean } {
+  const rawItem = (expense.itemName || '').trim();
+  const isInvalid = !rawItem || rawItem === '-' || rawItem === '—' || rawItem.toLowerCase() === expense.category.toLowerCase();
+  return {
+    title: isInvalid ? expense.category : rawItem,
+    hasSpecificItem: !isInvalid
+  };
+}
+
+/**
+ * Formats transaction subtitle into exact format:
+ * `[Payment Mode] • [Date]`
+ * Examples:
+ * - `UPI • 19 Sep 2026`
+ * - `CASH • Yesterday`
+ * - `UPI • Today`
+ */
+export function formatTransactionSubtitle(expense: Expense): string {
+  const mode = (expense.paymentMode || 'Cash').toUpperCase();
+  const rawDate = expense.date || (expense.createdAt ? expense.createdAt.substring(0, 10) : '');
+  const datePart = formatRelativeDate(rawDate);
+
+  return `${mode} • ${datePart}`;
+}
+
 export function getMonthDateRange(monthStr: string): { start: string; end: string } | null {
   if (!monthStr || monthStr === 'all') return null;
   const parts = monthStr.split('-');
@@ -62,7 +275,8 @@ export function filterExpenses(
   searchQuery?: string,
   place?: string,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  minAmount?: number
 ): Expense[] {
   const monthRange = monthStr ? getMonthDateRange(monthStr) : null;
 
@@ -84,13 +298,22 @@ export function filterExpenses(
       return false;
     }
 
-    // 4. Category filter
-    if (category && category !== 'All' && e.category !== category) {
-      return false;
+    // 4. Category filter (supports mapping legacy names to consolidated categories)
+    if (category && category !== 'All') {
+      const expNorm = normalizeCategoryName(e.category);
+      const targetNorm = normalizeCategoryName(category);
+      if (expNorm !== targetNorm) {
+        return false;
+      }
     }
 
     // 5. Payment mode filter
     if (paymentMode && paymentMode !== 'All' && e.paymentMode !== paymentMode) {
+      return false;
+    }
+
+    // 6. Minimum amount filter (e.g. > ₹500)
+    if (minAmount !== undefined && e.amount <= minAmount) {
       return false;
     }
 
@@ -114,7 +337,7 @@ export function filterExpenses(
       const query = searchQuery.toLowerCase().trim();
       const matchItem = e.itemName?.toLowerCase().includes(query);
       const matchPlace = e.place?.toLowerCase().includes(query);
-      const matchCategory = e.category.toLowerCase().includes(query);
+      const matchCategory = e.category.toLowerCase().includes(query) || normalizeCategoryName(e.category).toLowerCase().includes(query);
       const matchMember = e.member.toLowerCase().includes(query);
       const matchAmount = e.amount.toString().includes(query);
       const matchPayment = e.paymentMode.toLowerCase().includes(query);
@@ -181,11 +404,12 @@ export function calculateSummaryMetrics(currentExpenses: Expense[], previousMont
   const avgDailySpending = totalExpense > 0 ? totalExpense / activeDaysCount : 0;
   const avgPerTransaction = totalTransactions > 0 ? totalExpense / totalTransactions : 0;
 
-  // Category totals
+  // Category totals (grouped by normalized active categories)
   const categoryMap = new Map<string, { amount: number; count: number }>();
   currentExpenses.forEach(e => {
-    const curr = categoryMap.get(e.category) || { amount: 0, count: 0 };
-    categoryMap.set(e.category, {
+    const normCategory = normalizeCategoryName(e.category);
+    const curr = categoryMap.get(normCategory) || { amount: 0, count: 0 };
+    categoryMap.set(normCategory, {
       amount: curr.amount + e.amount,
       count: curr.count + 1
     });
@@ -321,6 +545,7 @@ export function calculateMonthlyTrend(allExpenses: Expense[], yearStr: string = 
     const prefix = `${yearStr}-${mStr}`;
     return {
       monthKey: prefix,
+      month: name,
       name,
       amount: 0,
       count: 0
