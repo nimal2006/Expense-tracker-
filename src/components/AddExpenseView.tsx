@@ -795,7 +795,7 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
           </div>
 
           <div className="relative flex items-center">
-            <span className="absolute left-4 text-3xl sm:text-4xl font-extrabold text-slate-400 dark:text-slate-500">
+            <span className="absolute left-4 text-3xl sm:text-4xl font-extrabold text-slate-400 dark:text-slate-500 pointer-events-none select-none z-10">
               ₹
             </span>
             <input
@@ -804,7 +804,7 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
               min="0"
               inputMode="decimal"
               autoFocus
-              placeholder="0"
+              placeholder={amount ? "" : "0"}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="w-full pl-12 pr-4 py-3.5 text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none tracking-tight transition-all"

@@ -357,18 +357,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             ) : '👥'}
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight truncate">
-                {viewScope === 'my' ? `${currentMember}'s Personal Dashboard` : 'Room Group Dashboard'}
-              </h1>
-              <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider inline-flex items-center shrink-0 ${
-                viewScope === 'my' 
-                  ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800' 
-                  : 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-              }`}>
-                {viewScope === 'my' ? `${currentMember}` : `All ${MEMBERS.length} Members`}
-              </span>
-            </div>
+            <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight truncate">
+              {viewScope === 'my' ? (
+                <>
+                  {(() => {
+                    const hour = new Date().getHours();
+                    let greetingText = 'Good morning';
+                    let emoji = '🌅';
+                    if (hour >= 12 && hour < 17) {
+                      greetingText = 'Good afternoon';
+                      emoji = '☀️';
+                    } else if (hour >= 17 && hour < 22) {
+                      greetingText = 'Good evening';
+                      emoji = '🌆';
+                    } else if (hour >= 22 || hour < 5) {
+                      greetingText = 'Good night';
+                      emoji = '🌙';
+                    }
+                    return (
+                      <>
+                        {greetingText},{' '}
+                        <span className="text-cyan-600 dark:text-cyan-400 font-bold">{currentMember}!</span>{' '}
+                        {emoji}
+                      </>
+                    );
+                  })()}
+                </>
+              ) : (
+                'Room Group Dashboard 👥'
+              )}
+            </h1>
           </div>
         </div>
 
@@ -422,20 +440,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         className="bg-white/90 dark:bg-[#11192D]/85 backdrop-blur-xl p-4 sm:p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 shadow-[0_4px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-4 relative overflow-hidden"
       >
         {/* Top Header Row: Spent vs Budget Target & Status Pill */}
-        <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
-          <div>
+        <div className="flex items-center justify-between gap-3 relative z-10">
+          <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-                {viewScope === 'my' ? `${currentMember}'s Total Outflow` : 'Room Group Total Outflow'}
-              </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border shrink-0 ${
-                isBudgetExceeded 
-                  ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800' 
-                  : budgetSpentPct >= 80 
-                    ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' 
-                    : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-              }`}>
-                {isBudgetExceeded ? 'Over Limit' : budgetSpentPct >= 80 ? 'Approaching Limit' : 'On Track'}
+                {viewScope === 'my' ? 'YOUR OUTFLOW' : 'ROOM GROUP OUTFLOW'}
               </span>
               <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full border shrink-0 ${
                 isBudgetExceeded
@@ -445,17 +454,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {isBudgetExceeded ? '0% Remaining' : `${Math.max(0, 100 - budgetRawPct)}% Remaining`}
               </span>
             </div>
-            <div className="flex items-baseline gap-2 mt-0.5">
+            <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono tabular-nums tracking-tight">
                 {formatCurrency(animatedTotalExpense)}
               </span>
-              <span className="text-xs font-medium text-slate-400 font-mono tabular-nums">
-                of {formatCurrency(activeBudget)} budget
+              <span className="text-sm font-medium text-slate-400 dark:text-slate-500 font-mono tabular-nums">
+                / {formatCurrency(activeBudget)}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {onOpenBudgetModal && (
               <button
                 onClick={onOpenBudgetModal}
@@ -471,11 +480,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Master Monthly Visual Progress Bar with Threshold Markers */}
         <div className="space-y-2 relative z-10">
           <div className="flex justify-between items-center text-xs font-semibold">
-            <span className={`flex items-center gap-1.5 font-mono ${
+            <span className={`font-mono ${
               isBudgetExceeded ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-700 dark:text-slate-300'
             }`}>
-              <span>{budgetRawPct}% utilized</span>
-              <span className="text-[10px] text-slate-400 font-normal">({formatCurrency(summary.totalExpense)} / {formatCurrency(activeBudget)})</span>
+              {budgetRawPct}% utilized
             </span>
             <span className={`font-mono ${
               isBudgetExceeded ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'
@@ -533,32 +541,46 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ? 'bg-amber-50/30 dark:bg-amber-950/20 border-amber-500/30 dark:border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.08)]'
               : 'bg-rose-50/30 dark:bg-rose-950/20 border-rose-500/30 dark:border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.08)]'
           }`}>
-            {/* Header: Label & Target */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            {/* Header: Label, Inline Fractional Spending Amount & Top-Right Streak Badge */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex flex-col space-y-0.5">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                   TODAY'S SPEND
                 </span>
-                <span className="text-sm font-extrabold text-slate-900 dark:text-white font-mono tabular-nums">
-                  {formatCurrency(animatedTodaySpent)}
-                </span>
-                <span className="text-xs text-slate-400 font-mono">
-                  / {formatCurrency(targetDailyBudget)} target
-                </span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold text-slate-900 dark:text-white font-mono tabular-nums tracking-tight">
+                    {formatCurrency(animatedTodaySpent)}
+                  </span>
+                  <span className="text-sm font-medium text-slate-400 dark:text-slate-500 font-mono tabular-nums">
+                    / {formatCurrency(targetDailyBudget)}
+                  </span>
+                </div>
               </div>
-              <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-full border ${
-                dailyMetrics.status === 'EXCEEDED'
-                  ? 'text-rose-600 bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-900/60'
-                  : dailyMetrics.status === 'WARNING'
-                  ? 'text-amber-600 bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-900/60'
-                  : 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-900/60'
-              }`}>
-                {dailyMetrics.percentage}% utilized
-              </span>
+
+              {/* Top-Right Simplified Streak Badge */}
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  if (gamificationProfile.currentStreak >= 3) {
+                    triggerStreakCelebration(gamificationProfile.currentStreak);
+                  }
+                  setIsProgressModalOpen(true);
+                }}
+                title="View Streak Details & Progress"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200/80 dark:border-orange-800/80 text-xs font-extrabold cursor-pointer shrink-0 transition-all hover:scale-105"
+              >
+                <span>🔥 {gamificationProfile.currentStreak}</span>
+              </motion.button>
             </div>
 
             {/* Dynamic Animated Progress Bar */}
             <div className="space-y-1.5">
+              <div className="flex justify-between items-center text-[11px] font-mono">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {dailyMetrics.percentage}% utilized
+                </span>
+              </div>
               <div className="w-full h-2.5 bg-slate-200/80 dark:bg-slate-700/80 rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
@@ -573,111 +595,92 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   }`}
                 />
               </div>
-              <div className="flex justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                <span className="font-semibold">
-                  {dailyMetrics.status === 'EXCEEDED'
-                    ? `₹${dailyMetrics.overAmount} over today's target`
-                    : `₹${dailyMetrics.remaining} remaining`}
-                </span>
-                <span>{dailyMetrics.percentage}% utilized</span>
-              </div>
             </div>
 
-            {/* Status State Banner / Feedback */}
-            <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-200/60 dark:border-slate-800/60">
-              <div className="flex flex-wrap items-center gap-2">
-                {dailyMetrics.status === 'SAFE' && (
-                  <div className="flex items-center gap-1.5">
+            {/* Status State Banner / Feedback & XP Row */}
+            <div className="pt-2 space-y-1 border-t border-slate-200/60 dark:border-slate-800/60">
+              {/* Row 1 (Badges): Status badge on left, XP tag on right */}
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  {dailyMetrics.status === 'SAFE' && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
                       🟢 Budget Safe!
                     </span>
-                    <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                      You have ₹{dailyMetrics.remaining} left today.
-                    </span>
-                  </div>
-                )}
-                {dailyMetrics.status === 'WARNING' && (
-                  <div className="flex items-center gap-1.5">
+                  )}
+                  {dailyMetrics.status === 'WARNING' && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                       🟡 Getting Close
                     </span>
-                    <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                      Only ₹{dailyMetrics.remaining} left today.
+                  )}
+                  {dailyMetrics.status === 'EXCEEDED' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                      🔴 Daily Limit Crossed
                     </span>
-                  </div>
-                )}
-                {dailyMetrics.status === 'EXCEEDED' && (
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
-                        🔴 Daily Limit Crossed
-                      </span>
-                      <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                        ₹{dailyMetrics.overAmount} over today's target.
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 italic">
-                      💡 Tomorrow is a fresh start.
-                    </p>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* Explicit ₹0 Spend Day Confirmation CTA */}
-                {animatedTodaySpent === 0 && viewScope === 'my' && (
-                  <div className="inline-flex items-center">
-                    {gamificationProfile.hasNoSpendConfirmedToday ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                        <span>Confirmed ₹0 Spent Today</span>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          confirmMemberNoSpendToday(currentMember);
-                          triggerStreakCelebration(gamificationProfile.currentStreak + 1);
-                          setIsProgressModalOpen(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-xs hover:opacity-95 transition-all cursor-pointer active:scale-95"
-                        title="Confirm you spent ₹0 today to lock in your daily streak!"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        <span>Confirm ₹0 Spent Today</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Streak and XP Badges (Interactive — Click to open My Progress) */}
-              <div className="flex items-center gap-2 shrink-0">
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    if (gamificationProfile.currentStreak >= 3) {
-                      triggerStreakCelebration(gamificationProfile.currentStreak);
-                    }
-                    setIsProgressModalOpen(true);
-                  }}
-                  title="View Streak Details & Progress"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700/80 hover:border-orange-300 dark:hover:border-orange-700 transition-colors text-xs font-bold cursor-pointer"
-                >
-                  <Flame className="w-3.5 h-3.5 text-orange-500 animate-pulse" />
-                  <span>{gamificationProfile.currentStreak} Day Streak</span>
-                </motion.button>
-
+                {/* XP Tag on far right */}
                 <motion.button
                   type="button"
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setIsProgressModalOpen(true)}
                   title="View XP & Level Progress"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/80 transition-colors text-xs font-bold cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[10px] font-bold cursor-pointer shrink-0"
                 >
                   <span className="text-amber-400">⭐</span>
                   <span>+{dailyMetrics.status === 'SAFE' ? '15' : '10'} XP</span>
                 </motion.button>
               </div>
+
+              {/* Row 2 (Message): Subtle, muted message directly below status badge */}
+              <div>
+                {dailyMetrics.status === 'SAFE' && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    You have ₹{dailyMetrics.remaining} left today.
+                  </p>
+                )}
+                {dailyMetrics.status === 'WARNING' && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    Only ₹{dailyMetrics.remaining} left today.
+                  </p>
+                )}
+                {dailyMetrics.status === 'EXCEEDED' && (
+                  <div className="space-y-0.5">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                      ₹{dailyMetrics.overAmount} over today's target.
+                    </p>
+                    <p className="text-[10px] text-slate-400 italic">
+                      💡 Tomorrow is a fresh start.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Explicit ₹0 Spend Day Confirmation CTA */}
+              {animatedTodaySpent === 0 && viewScope === 'my' && (
+                <div className="pt-1">
+                  {gamificationProfile.hasNoSpendConfirmedToday ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                      <span>Confirmed ₹0 Spent Today</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        confirmMemberNoSpendToday(currentMember);
+                        triggerStreakCelebration(gamificationProfile.currentStreak + 1);
+                        setIsProgressModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-xs hover:opacity-95 transition-all cursor-pointer active:scale-95"
+                      title="Confirm you spent ₹0 today to lock in your daily streak!"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Confirm ₹0 Spent Today</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
