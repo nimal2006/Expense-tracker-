@@ -4,6 +4,7 @@ import { ActiveTab, MemberName, Expense } from './types';
 import { db } from './services/storage';
 import { validateFirestoreConnection } from './services/firebase-service';
 import { getLocalDateString } from './utils/analytics';
+import { recordMemberAppOpen, seedHistoricalAppOpensIfMissing } from './utils/gamification';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
@@ -144,12 +145,20 @@ export const App: React.FC = () => {
       setExpenses(updatedExpenses);
       setBudgetVersion(prev => prev + 1);
       setIsLoading(false);
+      seedHistoricalAppOpensIfMissing(updatedExpenses);
     });
 
     return () => {
       unsubDb();
     };
   }, []);
+
+  // Record active member app open on load and member switch
+  useEffect(() => {
+    if (currentMember) {
+      recordMemberAppOpen(currentMember);
+    }
+  }, [currentMember]);
 
   // Compute available months dynamically from expenses and current calendar date
   const availableMonths = React.useMemo(() => {

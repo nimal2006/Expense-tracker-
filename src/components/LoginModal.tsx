@@ -73,11 +73,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               const isSelected = selectedUser === member.name;
               const isCurrent = member.name === currentMember;
               return (
-                <button
+                <div
                   key={member.id}
                   onClick={() => handleUserClick(member.name)}
                   onDoubleClick={() => handleConfirmLogin(member.name)}
-                  className={`flex flex-col items-center justify-between p-3.5 rounded-2xl border text-center transition-all relative cursor-pointer min-h-[116px] ${
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleUserClick(member.name);
+                    }
+                  }}
+                  className={`flex flex-col items-center justify-between p-3.5 rounded-2xl border text-center transition-all relative cursor-pointer min-h-[116px] select-none ${
                     isSelected
                       ? 'border-indigo-500 bg-indigo-950/40 ring-2 ring-indigo-500/30 shadow-md shadow-indigo-500/10'
                       : 'border-slate-800 hover:border-slate-700 bg-slate-800/30 hover:bg-slate-800/50'
@@ -128,7 +135,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       </span>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>

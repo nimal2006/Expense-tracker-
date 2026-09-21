@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Expense, MemberName } from '../types';
 import { normalizeCategoryName } from '../data/categories';
 import { generateMonthlyPdf } from '../services/pdfReport';
-import { calculateSummaryMetrics, getTopSpendingItems, formatCurrency, filterExpenses, sortExpensesDescending } from '../utils/analytics';
+import { calculateSummaryMetrics, getTopSpendingItems, formatCurrency, filterExpenses, sortExpensesDescending, getLocalDateString } from '../utils/analytics';
+import { getDailyBudgetSetting, calculateGamificationProfile } from '../utils/gamification';
+import { db } from '../services/storage';
 import {
   FileText,
   Download,
@@ -13,7 +15,13 @@ import {
   FileSpreadsheet,
   Layers,
   User,
-  Users
+  Users,
+  Calendar,
+  Zap,
+  TrendingDown,
+  TrendingUp,
+  Award,
+  Sparkles
 } from 'lucide-react';
 
 interface ReportsViewProps {
@@ -38,7 +46,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [exportScope, setExportScope] = useState<'group' | MemberName>('group');
+  const [exportScope, setExportScope] = useState<'group' | MemberName>(currentMember);
 
   const reportMonthStr = selectedMonth === 'all' ? 'All-Time Summary' : selectedMonth;
   const isPersonal = exportScope !== 'group';
@@ -77,6 +85,68 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       percentage: summary.totalExpense > 0 ? Math.round((amount / summary.totalExpense) * 100) : 0
     }))
     .sort((a, b) => b.amount - a.amount);
+
+  // 7-day Weekly Budget Health calculation
+  const todayDate = new Date();
+  const currentMonthKey = selectedMonth === 'all' ? getLocalDateString(todayDate).substring(0, 7) : selectedMonth;
+  const activeTargetScope = isPersonal ? (targetMember as MemberName) : 'group';
+  const monthlyCap = isPersonal ? db.getBudget(currentMonthKey, targetMember as MemberName) : db.getGroupBudget(currentMonthKey);
+  const dailySetting = getDailyBudgetSetting(currentMonthKey, activeTargetScope, monthlyCap);
+  const dailyBudgetTarget = dailySetting.amount;
+
+  // Generate last 7 days array
+  const weeklyDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(todayDate);
+    d.setDate(d.getDate() - (6 - i));
+    const dateStr = getLocalDateString(d);
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayDisplay = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    
+    // Filter expenses on this day
+    const dayExpenses = currentExpenses.filter(e => e.date === dateStr);
+    const totalSpent = dayExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const isFuture = d > todayDate;
+
+    let status: 'safe' | 'warning' | 'exceeded' | 'no_data' | 'future' = 'safe';
+    if (isFuture) {
+      status = 'future';
+    } else if (totalSpent === 0) {
+      status = 'no_data';
+    } else if (totalSpent > dailyBudgetTarget) {
+      status = 'exceeded';
+    } else if (totalSpent >= dailyBudgetTarget * 0.8) {
+      status = 'warning';
+    } else {
+      status = 'safe';
+    }
+
+    return {
+      dateStr,
+      dayName,
+      dayDisplay,
+      totalSpent,
+      dailyBudgetTarget,
+      status,
+      saved: Math.max(dailyBudgetTarget - totalSpent, 0)
+    };
+  });
+
+  // Calculate weekly metrics
+  const activeDays = weeklyDays.filter(d => d.status !== 'future');
+  const daysUnderBudget = activeDays.filter(d => d.status === 'safe' || d.status === 'no_data' || d.status === 'warning').length;
+  const totalWeeklySaved = activeDays.reduce((sum, d) => sum + (d.status === 'exceeded' ? 0 : d.saved), 0);
+  const totalWeeklySpent = activeDays.reduce((sum, d) => sum + d.totalSpent, 0);
+  const totalWeeklyLimit = dailyBudgetTarget * Math.max(activeDays.length, 1);
+  const weeklyPct = Math.min(Math.round((totalWeeklySpent / Math.max(totalWeeklyLimit, 1)) * 100), 100);
+  
+  // Best day: lowest non-negative spend
+  const sortedDays = [...activeDays].sort((a, b) => a.totalSpent - b.totalSpent);
+  const bestDay = sortedDays[0];
+
+  // Trend analysis (first 3 days average vs last 3 days average)
+  const firstHalfSpent = activeDays.slice(0, 3).reduce((sum, d) => sum + d.totalSpent, 0) / Math.max(activeDays.slice(0, 3).length, 1);
+  const secondHalfSpent = activeDays.slice(-3).reduce((sum, d) => sum + d.totalSpent, 0) / Math.max(activeDays.slice(-3).length, 1);
+  const trend = secondHalfSpent < firstHalfSpent ? 'Improving' : secondHalfSpent > firstHalfSpent * 1.15 ? 'Worsening' : 'Stable';
 
   const handleDownloadPdf = () => {
     setIsGenerating(true);
@@ -277,6 +347,138 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <span>{successToast}</span>
         </div>
       )}
+
+      {/* Weekly Budget Health Section (7-Day Performance & Streaks) */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        {/* Card Header: Vertically Centered Title, Icon & Status Tag */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-100 dark:border-indigo-900/60">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+                Weekly Budget Health (Last 7 Days)
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Daily target pacing: {formatCurrency(dailyBudgetTarget)}/day
+              </p>
+            </div>
+          </div>
+          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0">
+            {daysUnderBudget}/7 days on track
+          </span>
+        </div>
+
+        {/* Weekly Spent vs Limit Metrics Bar & Track */}
+        <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 space-y-2">
+          <div className="flex items-baseline justify-between w-full text-xs">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Weekly Spent:
+              </span>
+              <span className="text-sm font-extrabold font-mono text-slate-900 dark:text-white">
+                {formatCurrency(totalWeeklySpent)}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-slate-400 font-mono text-[11px]">Allowance:</span>
+              <span className="font-bold font-mono text-slate-700 dark:text-slate-300 text-xs">
+                {formatCurrency(totalWeeklyLimit)}
+              </span>
+            </div>
+          </div>
+
+          <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700/80 rounded-full overflow-hidden my-1">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                totalWeeklySpent > totalWeeklyLimit
+                  ? 'bg-gradient-to-r from-rose-500 to-pink-500'
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-400'
+              }`}
+              style={{ width: `${weeklyPct}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 font-medium">
+            <span>₹0</span>
+            <span>{weeklyPct}% Utilized</span>
+            <span>Weekly Limit: {formatCurrency(totalWeeklyLimit)}</span>
+          </div>
+        </div>
+
+        {/* 7-Day Calendar Strip */}
+        <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+          {weeklyDays.map((day) => {
+            const isSafe = day.status === 'safe' || day.status === 'no_data';
+            const isWarning = day.status === 'warning';
+            const isExceeded = day.status === 'exceeded';
+
+            return (
+              <div
+                key={day.dateStr}
+                className={`p-2 sm:p-2.5 rounded-2xl border flex flex-col items-center justify-center text-center transition-all ${
+                  isExceeded
+                    ? 'bg-rose-50/70 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800/80'
+                    : isWarning
+                    ? 'bg-amber-50/70 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800/80'
+                    : isSafe
+                    ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/80'
+                    : 'bg-slate-50/70 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800 opacity-60'
+                }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  {day.dayName}
+                </span>
+                <span className="text-[9px] text-slate-400 opacity-80 my-0.5 font-medium">
+                  {day.dayDisplay}
+                </span>
+                <div className="mt-1">
+                  <span className={`text-xs sm:text-sm font-extrabold font-mono block ${
+                    isExceeded
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : isWarning
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    {day.totalSpent > 0 ? `₹${day.totalSpent}` : '₹0'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 4 Summary Stat Pills Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800/80 flex flex-col items-center justify-center text-center space-y-1 h-full">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Days Under Budget</span>
+            <span className="text-base font-extrabold text-slate-900 dark:text-white block font-mono">
+              {daysUnderBudget} / 7
+            </span>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800/80 flex flex-col items-center justify-center text-center space-y-1 h-full">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Saved vs Limit</span>
+            <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 block font-mono">
+              +{formatCurrency(totalWeeklySaved)}
+            </span>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800/80 flex flex-col items-center justify-center text-center space-y-1 h-full">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Best Day</span>
+            <span className="text-base font-extrabold text-indigo-600 dark:text-indigo-400 block font-mono">
+              {bestDay ? `${bestDay.dayName} (₹${bestDay.totalSpent})` : '—'}
+            </span>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800/80 flex flex-col items-center justify-center text-center space-y-1 h-full">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Spending Trend</span>
+            <span className={`text-base font-extrabold block ${
+              trend === 'Improving' ? 'text-emerald-600 dark:text-emerald-400' : trend === 'Worsening' ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'
+            }`}>
+              {trend === 'Improving' ? 'Improving 📈' : trend === 'Worsening' ? 'Worsening 📉' : 'Stable ➡️'}
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* Live Report Preview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
