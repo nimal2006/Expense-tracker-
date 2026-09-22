@@ -84,6 +84,14 @@ export const CATEGORIES: CategoryMeta[] = [
     commonItems: ['Spotify', 'DC movie', 'Cinema Ticket', 'Abirami theatre', 'Shiva Velur', 'Game Zone']
   },
   {
+    name: 'Tobacco Products',
+    color: '#DC2626', // Red
+    bgColor: 'bg-red-50 dark:bg-red-950/40',
+    textColor: 'text-red-600 dark:text-red-400',
+    iconName: 'Flame',
+    commonItems: ['Cigarette', 'Hans']
+  },
+  {
     name: 'Others',
     color: '#64748B', // Slate
     bgColor: 'bg-slate-100 dark:bg-slate-800',
@@ -123,11 +131,17 @@ export function normalizeCategoryName(rawCategory?: string): ActiveCategoryName 
     return 'Beverages';
   }
 
-  // Mapped to Others
+  // Mapped to Tobacco Products
   if (
     trimmed === 'Cigarette' ||
     trimmed === 'Hans' ||
-    trimmed === 'Tobacco Products' ||
+    trimmed === 'Tobacco Products'
+  ) {
+    return 'Tobacco Products';
+  }
+
+  // Mapped to Others
+  if (
     trimmed === 'Liquor' ||
     trimmed === 'Alcohol'
   ) {

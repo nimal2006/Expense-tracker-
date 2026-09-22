@@ -21,6 +21,7 @@ export type ActiveCategoryName =
   | 'Education/Fees'
   | 'Personal & Lifestyle'
   | 'Entertainment'
+  | 'Tobacco Products'
   | 'Others';
 
 export type LegacyCategoryName =
