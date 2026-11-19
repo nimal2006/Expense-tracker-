@@ -52,6 +52,7 @@ import { EditExpenseModal } from './components/EditExpenseModal';
 import { BudgetModal } from './components/BudgetModal';
 import { PdfImporterModal } from './components/PdfImporterModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
+import { UpdateBanner } from './components/UpdateBanner';
 import { SplashScreen } from './components/SplashScreen';
 import { AppLogo } from './components/AppLogo';
 import { useMemberAvatars } from './hooks/useMemberAvatars';
@@ -631,6 +632,9 @@ export const App: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Non-blocking PWA/Build Update Banner */}
+        <UpdateBanner />
 
         {/* Non-blocking top offline/quota banner */}
         <SyncStatusBanner />

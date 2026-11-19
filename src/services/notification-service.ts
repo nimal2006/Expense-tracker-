@@ -199,7 +199,9 @@ export async function registerMemberDeviceToken(member: MemberName): Promise<boo
     const supported = await isSupported();
     if (!supported) return false;
 
-    const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+      scope: '/firebase-cloud-messaging-push-scope',
+    });
     const messaging = getMessaging(getApp());
     const token = await getToken(messaging, {
       vapidKey,
@@ -270,8 +272,8 @@ export async function showSystemNotification(options: {
 
   try {
     if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration && typeof registration.showNotification === 'function') {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      if (registration && registration.active && typeof registration.showNotification === 'function') {
         await registration.showNotification(options.title, {
           body: options.body,
           icon: '/pwa-192x192.png',
