@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MemberName, CategoryName, PaymentMode } from '../types';
+import { MemberName, CategoryName, PaymentMode, Expense, ExpensePrefill } from '../types';
 import { CATEGORIES, PAYMENT_MODES, MEMBERS } from '../data/categories';
 import { useMemberAvatars } from '../hooks/useMemberAvatars';
 import { db } from '../services/storage';
@@ -53,7 +53,10 @@ import {
 interface AddExpenseViewProps {
   currentMember: MemberName;
   onExpenseAdded?: () => void;
+  onExpenseCreated?: (expense: Expense) => void;
   onNavigateToHistory?: () => void;
+  prefillDraft?: ExpensePrefill | null;
+  onClearPrefill?: () => void;
 }
 
 const formContainerVariants = {
@@ -106,7 +109,10 @@ const PAYMENT_ICONS: Record<string, React.ElementType> = {
 export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
   currentMember,
   onExpenseAdded,
-  onNavigateToHistory
+  onExpenseCreated,
+  onNavigateToHistory,
+  prefillDraft,
+  onClearPrefill
 }) => {
   // 1. Core Fast Fields
   const [amount, setAmount] = useState<string>('');
@@ -147,6 +153,20 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
   const [itemName, setItemName] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
   const [place, setPlace] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
+
+  // Prefill from Smart Bus Schedule ("Add Ticket to Expenses") — requires user confirmation to save
+  useEffect(() => {
+    if (!prefillDraft) return;
+    setAmount(String(prefillDraft.amount));
+    setSelectedCategory(prefillDraft.category);
+    setItemName(prefillDraft.itemName);
+    setDate(prefillDraft.date || getLocalDateString(new Date()));
+    setIsCustomDateSelected(false);
+    if (prefillDraft.place) setPlace(prefillDraft.place);
+    if (prefillDraft.notes) setNotes(prefillDraft.notes);
+    setShowDetails(true);
+  }, [prefillDraft]);
 
   // 4. Status & Duplicate Warning
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -427,6 +447,7 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
       itemName: itemName.trim() || undefined,
       quantity: quantity > 0 ? quantity : 1,
       place: place.trim() || undefined,
+      notes: notes.trim() || undefined,
       receiptUrl: attachedReceipt?.url || undefined
     });
 
@@ -450,14 +471,22 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
       setAmount('');
       setItemName('');
       setPlace('');
+      setNotes('');
       setQuantity(1);
       setShowDetails(false);
       setAttachedReceipt(null);
       setDuplicateWarning(null);
+      if (onClearPrefill) {
+        onClearPrefill();
+      }
 
       // Keep time synced to current local time if not custom
       if (!isCustomTimeSelected) {
         setTime(getCurrentLocalTimeString(new Date()));
+      }
+
+      if (res.expense && onExpenseCreated) {
+        onExpenseCreated(res.expense);
       }
 
       if (onExpenseAdded) {
@@ -481,6 +510,36 @@ export const AddExpenseView: React.FC<AddExpenseViewProps> = ({
       className="max-w-2xl mx-auto space-y-4 sm:space-y-5 pb-28 sm:pb-16"
     >
       
+      {/* Prefilled Bus Ticket Confirmation Notice */}
+      {prefillDraft && (
+        <motion.div
+          variants={formItemVariants}
+          className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/35 text-xs text-cyan-800 dark:text-[#22D3EE]"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Bus className="w-4 h-4 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-bold truncate">
+                Prefilled from Bus Schedule{prefillDraft.sourceLabel ? `: ${prefillDraft.sourceLabel}` : ''}
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-[#94A3B8]">
+                Select UPI / Cash / Friend Paid below and tap Save to confirm.
+              </p>
+            </div>
+          </div>
+          {onClearPrefill && (
+            <button
+              type="button"
+              onClick={onClearPrefill}
+              aria-label="Clear bus prefill notice"
+              className="p-1.5 rounded-lg hover:bg-cyan-500/20 cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </motion.div>
+      )}
+
       {/* Top Banner Card: Logged in as [Member] */}
       <motion.div
         variants={formItemVariants}

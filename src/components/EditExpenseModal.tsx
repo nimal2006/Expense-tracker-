@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Expense, MemberName, CategoryName, PaymentMode } from '../types';
 import { CATEGORIES, PAYMENT_MODES, normalizeCategoryName } from '../data/categories';
 import { db } from '../services/storage';
+import { dispatchFriendExpenseNotifications } from '../services/notification-service';
 import { getLocalDateString } from '../utils/analytics';
 import { X, Check, Lock, Save, Trash2, Plus, Minus } from 'lucide-react';
 
@@ -82,6 +83,9 @@ const EditExpenseContent: React.FC<Omit<EditExpenseModalProps, 'isOpen'>> = ({
     );
 
     if (res.success) {
+      if (res.expense) {
+        dispatchFriendExpenseNotifications(res.expense, 'edit').catch(() => {});
+      }
       onExpenseUpdated();
       onClose();
     } else {

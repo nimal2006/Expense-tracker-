@@ -1,9 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ActiveTab, MemberName, Expense } from './types';
+import {
+  ActiveTab,
+  BusSchedule,
+  Expense,
+  ExpensePrefill,
+  MemberName,
+  NotificationLog,
+  NotificationPreferences,
+} from './types';
 import { db } from './services/storage';
 import { validateFirestoreConnection } from './services/firebase-service';
+import { subscribeToBusSchedules } from './services/bus-service';
+import {
+  BrowserNotificationPermission,
+  dispatchFriendExpenseNotifications,
+  evaluateDailyExpenseReminder,
+  getBrowserNotificationPermission,
+  getDefaultPreferences,
+  markAllNotificationsRead,
+  markNotificationDeliveredLocally,
+  markNotificationLogRead,
+  playNotificationSound,
+  registerMemberDeviceToken,
+  requestNotificationPermission,
+  saveNotificationPreferences,
+  showSystemNotification,
+  snoozeDailyReminderBy60Minutes,
+  subscribeToMemberNotificationLogs,
+  subscribeToNotificationPreferences,
+  unregisterCurrentDeviceToken,
+} from './services/notification-service';
 import { getLocalDateString } from './utils/analytics';
+import { getISTDateString } from './utils/istTime';
 import { recordMemberAppOpen, seedHistoricalAppOpensIfMissing } from './utils/gamification';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -13,6 +42,10 @@ import { DashboardView } from './components/DashboardView';
 import { HistoryView } from './components/HistoryView';
 import { ReportsView } from './components/ReportsView';
 import { MembersView } from './components/MembersView';
+import { BusScheduleView } from './components/BusScheduleView';
+import { NotificationDrawer } from './components/NotificationDrawer';
+import { ExpenseDetailModal } from './components/ExpenseDetailModal';
+import { NotificationToast } from './components/NotificationToast';
 import { LoginModal } from './components/LoginModal';
 import { EditExpenseModal } from './components/EditExpenseModal';
 import { BudgetModal } from './components/BudgetModal';
@@ -25,7 +58,7 @@ export const App: React.FC = () => {
   // Navigation & User state
   const [activeTab, setActiveTabState] = useState<ActiveTab>(() => {
     const saved = localStorage.getItem('friends_active_tab') as ActiveTab;
-    if (saved && ['dashboard', 'add', 'history', 'members', 'reports'].includes(saved)) {
+    if (saved && ['dashboard', 'add', 'history', 'members', 'reports', 'buses'].includes(saved)) {
       return saved;
     }
     return 'dashboard';
@@ -108,6 +141,38 @@ export const App: React.FC = () => {
   const [initialCategoryFilter, setInitialCategoryFilter] = useState<string | undefined>(undefined);
   const [initialMemberFilter, setInitialMemberFilter] = useState<MemberName | undefined>(undefined);
 
+  // New Feature States: Bus Schedules, Prefill Draft, Notifications & Settings
+  const [busSchedules, setBusSchedules] = useState<BusSchedule[]>([]);
+  const [expensePrefill, setExpensePrefill] = useState<ExpensePrefill | null>(null);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(() =>
+    getDefaultPreferences(db.getCurrentUser())
+  );
+  const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState<boolean>(false);
+  const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
+  const [liveToast, setLiveToast] = useState<NotificationLog | null>(null);
+  const [permissionStatus, setPermissionStatus] = useState<BrowserNotificationPermission>(() =>
+    getBrowserNotificationPermission()
+  );
+
+  const hydratedLogMemberRef = useRef<MemberName | null>(null);
+  const knownLogIdsRef = useRef<Set<string>>(new Set());
+  const latestPrefsRef = useRef<NotificationPreferences>(notificationPrefs);
+  const latestExpensesRef = useRef<Expense[]>(expenses);
+  const latestLogsRef = useRef<NotificationLog[]>(notificationLogs);
+
+  useEffect(() => {
+    latestPrefsRef.current = notificationPrefs;
+  }, [notificationPrefs]);
+
+  useEffect(() => {
+    latestExpensesRef.current = expenses;
+  }, [expenses]);
+
+  useEffect(() => {
+    latestLogsRef.current = notificationLogs;
+  }, [notificationLogs]);
+
   // Sync dark mode class with DOM and localStorage
   useEffect(() => {
     if (isDarkMode) {
@@ -159,6 +224,196 @@ export const App: React.FC = () => {
       recordMemberAppOpen(currentMember);
     }
   }, [currentMember]);
+
+  // Subscribe to Shared Group Bus Schedules
+  useEffect(() => {
+    const unsubBuses = subscribeToBusSchedules((updated) => {
+      setBusSchedules(updated);
+    });
+    return () => unsubBuses();
+  }, []);
+
+  // Subscribe to Per-Member Notification Preferences & Register FCM Token if permitted
+  useEffect(() => {
+    const unsubPrefs = subscribeToNotificationPreferences(currentMember, (prefs) => {
+      setNotificationPrefs(prefs);
+    });
+    const perm = getBrowserNotificationPermission();
+    setPermissionStatus(perm);
+    if (perm === 'granted') {
+      registerMemberDeviceToken(currentMember).catch(() => {});
+    }
+    return () => unsubPrefs();
+  }, [currentMember]);
+
+  // Subscribe to Real-Time Notification Logs for Current Member
+  useEffect(() => {
+    hydratedLogMemberRef.current = null;
+    knownLogIdsRef.current = new Set();
+
+    const unsubLogs = subscribeToMemberNotificationLogs(currentMember, (logs) => {
+      setNotificationLogs(logs);
+
+      if (hydratedLogMemberRef.current !== currentMember) {
+        // First snapshot for this member: seed known IDs so old logs don't fire popups
+        hydratedLogMemberRef.current = currentMember;
+        knownLogIdsRef.current = new Set(logs.map((l) => l.id));
+        return;
+      }
+
+      // Detect newly arrived unread friend activity notifications
+      const prefs = latestPrefsRef.current;
+      for (const log of logs) {
+        if (knownLogIdsRef.current.has(log.id)) continue;
+        knownLogIdsRef.current.add(log.id);
+
+        if (
+          log.type === 'friend_activity' &&
+          !log.read &&
+          log.actorMember !== currentMember &&
+          prefs.friendActivityEnabled &&
+          (!log.metadata?.isEdit || prefs.notifyOnEdits)
+        ) {
+          const isNewDelivery = markNotificationDeliveredLocally(log.id);
+          if (isNewDelivery) {
+            playNotificationSound(prefs.soundEnabled);
+            setLiveToast(log);
+            showSystemNotification({
+              title: log.title,
+              body: log.message,
+              tag: log.id,
+              silent: !prefs.soundEnabled,
+              data: {
+                type: 'friend_activity',
+                expenseId: log.expenseId || '',
+                logId: log.id,
+              },
+            }).catch(() => {});
+          }
+        }
+      }
+    });
+
+    return () => unsubLogs();
+  }, [currentMember]);
+
+  // Check whether currentMember already logged an expense on today's IST calendar day
+  const hasLoggedExpenseToday = React.useMemo(() => {
+    const todayIST = getISTDateString();
+    return expenses.some((e) => e.member === currentMember && e.date === todayIST);
+  }, [expenses, currentMember]);
+
+  // Stop active daily reminder toast immediately if member logs an expense today
+  useEffect(() => {
+    if (hasLoggedExpenseToday && liveToast?.type === 'daily_reminder') {
+      setLiveToast(null);
+    }
+  }, [hasLoggedExpenseToday, liveToast]);
+
+  // Smart Daily Expense Reminder Evaluator (Asia/Kolkata, checks on load, changes, and every 60s)
+  useEffect(() => {
+    let cancelled = false;
+
+    const runCheck = async () => {
+      if (cancelled) return;
+      const triggered = await evaluateDailyExpenseReminder({
+        member: currentMember,
+        expenses: latestExpensesRef.current,
+        preferences: latestPrefsRef.current,
+        existingLogs: latestLogsRef.current,
+      });
+      if (!cancelled && triggered) {
+        setLiveToast(triggered);
+      }
+    };
+
+    const startupTimer = setTimeout(runCheck, 2500);
+    const interval = setInterval(runCheck, 60_000);
+    return () => {
+      cancelled = true;
+      clearTimeout(startupTimer);
+      clearInterval(interval);
+    };
+  }, [currentMember, notificationPrefs.dailyReminderEnabled, notificationPrefs.reminderTime, hasLoggedExpenseToday]);
+
+  // Deep-link handling from Service Worker notification clicks & URL query params
+  useEffect(() => {
+    const openExpenseById = (expenseId: string) => {
+      const found = latestExpensesRef.current.find((e) => String(e.id) === String(expenseId));
+      if (found) {
+        setViewingExpense(found);
+      } else {
+        setActiveTab('history');
+      }
+    };
+
+    const handleSnoozeById = (logId: string) => {
+      const target = latestLogsRef.current.find((l) => l.id === logId) ||
+        latestLogsRef.current.find((l) => l.type === 'daily_reminder' && l.dateKey === getISTDateString());
+      if (target) {
+        snoozeDailyReminderBy60Minutes(target, currentMember).catch(() => {});
+        setLiveToast(null);
+      }
+    };
+
+    // Handle initial URL params if launched from a background notification
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    const urlExpenseId = params.get('expenseId');
+    const urlLogId = params.get('logId');
+
+    if (action === 'add-expense') {
+      setActiveTab('add');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (action === 'remind-later' && urlLogId) {
+      setTimeout(() => handleSnoozeById(urlLogId), 1000);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (urlExpenseId) {
+      setTimeout(() => openExpenseById(urlExpenseId), 600);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    // Listen to Service Worker postMessage events
+    const onSwMessage = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'FRIENDS_TRACKER_OPEN_ADD_EXPENSE') {
+        setActiveTab('add');
+      } else if (msg.type === 'FRIENDS_TRACKER_OPEN_EXPENSE' && msg.expenseId) {
+        openExpenseById(msg.expenseId);
+      } else if (msg.type === 'FRIENDS_TRACKER_REMIND_LATER' && msg.logId) {
+        handleSnoozeById(msg.logId);
+      }
+    };
+
+    const onCustomAdd = () => setActiveTab('add');
+    const onCustomExpense = (e: Event) => {
+      const detail = (e as CustomEvent<{ expenseId?: string }>).detail;
+      if (detail?.expenseId) openExpenseById(detail.expenseId);
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', onSwMessage);
+    }
+    window.addEventListener('friends-tracker:open-add-expense', onCustomAdd);
+    window.addEventListener('friends-tracker:open-expense', onCustomExpense);
+
+    return () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', onSwMessage);
+      }
+      window.removeEventListener('friends-tracker:open-add-expense', onCustomAdd);
+      window.removeEventListener('friends-tracker:open-expense', onCustomExpense);
+    };
+  }, [currentMember]);
+
+  // Auto-dismiss live toast after 7 seconds for friend activity (keep reminders slightly longer)
+  useEffect(() => {
+    if (!liveToast) return;
+    const ms = liveToast.type === 'daily_reminder' ? 12000 : 7000;
+    const timer = setTimeout(() => setLiveToast(null), ms);
+    return () => clearTimeout(timer);
+  }, [liveToast]);
 
   // Compute available months dynamically from expenses and current calendar date
   const availableMonths = React.useMemo(() => {
@@ -214,6 +469,76 @@ export const App: React.FC = () => {
     reloadData();
   };
 
+  // New Feature Handlers
+  const unreadNotificationsCount = React.useMemo(
+    () => notificationLogs.filter((l) => !l.read).length,
+    [notificationLogs]
+  );
+
+  const handleToggleFavouriteBus = async (busId: string) => {
+    const exists = notificationPrefs.favouriteBusIds.includes(busId);
+    const nextFavs = exists
+      ? notificationPrefs.favouriteBusIds.filter((id) => id !== busId)
+      : [...notificationPrefs.favouriteBusIds, busId];
+    const updated = await saveNotificationPreferences(currentMember, { favouriteBusIds: nextFavs });
+    setNotificationPrefs(updated);
+  };
+
+  const handleAddTicketToExpenses = (prefill: ExpensePrefill) => {
+    setExpensePrefill(prefill);
+    setActiveTab('add');
+  };
+
+  const handleUpdateNotificationPrefs = async (
+    updates: Partial<Omit<NotificationPreferences, 'member' | 'updatedAt'>>
+  ) => {
+    const updated = await saveNotificationPreferences(currentMember, updates);
+    setNotificationPrefs(updated);
+    if (!updated.dailyReminderEnabled && !updated.friendActivityEnabled) {
+      unregisterCurrentDeviceToken().catch(() => {});
+    } else if (getBrowserNotificationPermission() === 'granted') {
+      registerMemberDeviceToken(currentMember).catch(() => {});
+    }
+  };
+
+  const handleRequestPushPermission = async () => {
+    const res = await requestNotificationPermission(currentMember);
+    setPermissionStatus(res.permission);
+  };
+
+  const handleTapActivityLog = (log: NotificationLog) => {
+    markNotificationLogRead(log.id, currentMember).catch(() => {});
+    setIsNotificationDrawerOpen(false);
+    setLiveToast(null);
+    if (log.expenseId) {
+      const target = expenses.find((e) => String(e.id) === String(log.expenseId));
+      if (target) {
+        setViewingExpense(target);
+        return;
+      }
+    }
+    setActiveTab('history');
+  };
+
+  const handleTapAddExpenseFromReminder = (log: NotificationLog) => {
+    markNotificationLogRead(log.id, currentMember).catch(() => {});
+    setIsNotificationDrawerOpen(false);
+    setLiveToast(null);
+    setActiveTab('add');
+  };
+
+  const handleTapRemindMeLater = async (log: NotificationLog) => {
+    await snoozeDailyReminderBy60Minutes(log, currentMember);
+    setLiveToast(null);
+  };
+
+  const handleExpenseCreated = (expense: Expense) => {
+    dispatchFriendExpenseNotifications(expense, 'create').catch(() => {});
+    if (expense.date === getISTDateString() && liveToast?.type === 'daily_reminder') {
+      setLiveToast(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#080B18] text-slate-900 dark:text-[#F8FAFC] flex flex-col md:flex-row antialiased font-sans transition-colors duration-200">
       
@@ -240,6 +565,8 @@ export const App: React.FC = () => {
           onSelectMember={handleSelectMember}
           isDarkMode={isDarkMode}
           onToggleDarkMode={handleToggleDarkMode}
+          onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
+          unreadCount={unreadNotificationsCount}
         />
       </div>
 
@@ -257,6 +584,10 @@ export const App: React.FC = () => {
           onToggleDarkMode={handleToggleDarkMode}
           onOpenAddModal={() => setActiveTab('add')}
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
+          onOpenBuses={() => setActiveTab('buses')}
+          isBusesActive={activeTab === 'buses'}
+          onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
+          unreadCount={unreadNotificationsCount}
           expenses={expenses}
         />
 
@@ -299,7 +630,10 @@ export const App: React.FC = () => {
               <AddExpenseView
                 currentMember={currentMember}
                 onExpenseAdded={reloadData}
+                onExpenseCreated={handleExpenseCreated}
                 onNavigateToHistory={() => setActiveTab('history')}
+                prefillDraft={expensePrefill}
+                onClearPrefill={() => setExpensePrefill(null)}
               />
             )}
 
@@ -342,6 +676,17 @@ export const App: React.FC = () => {
                 currentMember={currentMember}
                 onRefreshData={reloadData}
                 onOpenPdfImporter={() => setIsPdfImporterOpen(true)}
+              />
+            )}
+
+            {/* 6. Smart Bus Schedule & Fare Tracker View */}
+            {activeTab === 'buses' && (
+              <BusScheduleView
+                buses={busSchedules}
+                currentMember={currentMember}
+                favouriteBusIds={notificationPrefs.favouriteBusIds}
+                onToggleFavouriteBus={handleToggleFavouriteBus}
+                onAddTicketToExpenses={handleAddTicketToExpenses}
               />
             )}
           </div>
@@ -394,6 +739,39 @@ export const App: React.FC = () => {
         onClose={() => setIsPdfImporterOpen(false)}
         currentMember={currentMember}
         onExpensesMerged={reloadData}
+      />
+
+      {/* Notifications Drawer (Activity Feed + Compact Per-Member Settings) */}
+      <NotificationDrawer
+        isOpen={isNotificationDrawerOpen}
+        onClose={() => setIsNotificationDrawerOpen(false)}
+        currentMember={currentMember}
+        logs={notificationLogs}
+        preferences={notificationPrefs}
+        permissionStatus={permissionStatus}
+        hasLoggedExpenseToday={hasLoggedExpenseToday}
+        onUpdatePreferences={handleUpdateNotificationPrefs}
+        onRequestPermission={handleRequestPushPermission}
+        onMarkAllRead={() => markAllNotificationsRead(notificationLogs, currentMember)}
+        onTapActivityLog={handleTapActivityLog}
+        onTapAddExpenseFromReminder={handleTapAddExpenseFromReminder}
+        onTapRemindMeLater={handleTapRemindMeLater}
+      />
+
+      {/* Expense Quick-Detail Modal (Opened from Friend Activity Notifications) */}
+      <ExpenseDetailModal
+        expense={viewingExpense}
+        onClose={() => setViewingExpense(null)}
+        onEditExpense={handleOpenEditModal}
+      />
+
+      {/* Real-Time Floating Notification Toast */}
+      <NotificationToast
+        toast={liveToast}
+        onDismiss={() => setLiveToast(null)}
+        onTapActivity={handleTapActivityLog}
+        onTapAddExpense={handleTapAddExpenseFromReminder}
+        onTapRemindLater={handleTapRemindMeLater}
       />
 
     </div>

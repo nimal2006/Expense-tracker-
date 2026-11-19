@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // Default deny catch-all
     match /{document=**} {
       allow read, write: if false;
     }
@@ -12,7 +12,23 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidMemberName(name) {
+      return name in ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'];
+    }
+
+    function isValidMemberSlug(slug) {
+      return slug in ['nimal', 'etti', 'dharan', 'sanjai', 'santhosh', 'sujhay'];
+    }
+
+    function isValidTimeHHMM(val) {
+      return val is string && val.size() == 5 && val.matches('^([01]\\d|2[0-3]):[0-5]\\d$');
+    }
+
+    function isValidDateYMD(val) {
+      return val is string && val.size() == 10 && val.matches('^\\d{4}-\\d{2}-\\d{2}$');
     }
 
     function incoming() {
@@ -23,17 +39,24 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Entity Validations
+    // Existing Entity Validations (preserved without breaking changes)
     function isValidExpense(data) {
       return data.keys().hasAll(['id', 'member', 'amount', 'category', 'paymentMode', 'date', 'createdAt']) &&
-             data.keys().hasOnly(['id', 'member', 'amount', 'category', 'paymentMode', 'date', 'time', 'itemName', 'quantity', 'place', 'notes', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'member', 'amount', 'category', 'paymentMode', 'date', 'time', 'itemName', 'quantity', 'place', 'notes', 'receiptUrl', 'createdAt', 'updatedAt']) &&
              data.id is string && data.id.size() <= 128 &&
-             data.member in ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'] &&
-             data.amount is number && data.amount >= 0 &&
+             isValidMemberName(data.member) &&
+             data.amount is number && data.amount >= 0 && data.amount <= 10000000 &&
              data.category is string && data.category.size() <= 100 &&
              data.paymentMode in ['UPI', 'Cash', 'Card', 'Friend Paid'] &&
-             data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
-             data.createdAt is string && data.createdAt.size() <= 100;
+             isValidDateYMD(data.date) &&
+             (!('time' in data) || (data.time is string && data.time.size() <= 32)) &&
+             (!('itemName' in data) || (data.itemName is string && data.itemName.size() <= 200)) &&
+             (!('quantity' in data) || (data.quantity is number && data.quantity >= 0 && data.quantity <= 10000)) &&
+             (!('place' in data) || (data.place is string && data.place.size() <= 200)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+             (!('receiptUrl' in data) || (data.receiptUrl is string && data.receiptUrl.size() <= 400000)) &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
     }
 
     function isValidBudget(data) {
@@ -41,15 +64,82 @@ service cloud.firestore {
              data.keys().hasOnly(['key', 'month', 'amount', 'member', 'updatedAt']) &&
              data.key is string && data.key.size() <= 128 &&
              data.month is string && data.month.matches('^\\d{4}-\\d{2}$') &&
-             data.amount is number && data.amount >= 0 &&
+             data.amount is number && data.amount >= 0 && data.amount <= 100000000 &&
+             (!('member' in data) || isValidMemberName(data.member)) &&
              data.updatedAt is string && data.updatedAt.size() <= 100;
     }
 
     function isValidAvatar(data) {
       return data.keys().hasAll(['member', 'updatedAt']) &&
              data.keys().hasOnly(['member', 'avatarUrl', 'updatedAt']) &&
-             data.member in ['Nimal', 'Etti', 'Dharan', 'Sanjai', 'Santhosh', 'Sujhay'] &&
+             isValidMemberName(data.member) &&
              (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 400000)) &&
+             data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    // New Entity Validations
+    function isValidBusSchedule(data) {
+      return data.keys().hasAll(['id', 'busName', 'busNumber', 'operator', 'fromLocation', 'toLocation', 'departureTime', 'arrivalTime', 'ticketPrice', 'busType', 'operatingDays', 'createdBy', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'busName', 'busNumber', 'operator', 'fromLocation', 'toLocation', 'departureTime', 'arrivalTime', 'ticketPrice', 'busType', 'operatingDays', 'notes', 'createdBy', 'createdAt', 'updatedAt']) &&
+             isValidId(data.id) &&
+             data.busName is string && data.busName.size() >= 1 && data.busName.size() <= 120 &&
+             data.busNumber is string && data.busNumber.size() <= 40 &&
+             data.operator in ['Government', 'Private'] &&
+             data.fromLocation is string && data.fromLocation.size() >= 1 && data.fromLocation.size() <= 120 &&
+             data.toLocation is string && data.toLocation.size() >= 1 && data.toLocation.size() <= 120 &&
+             isValidTimeHHMM(data.departureTime) &&
+             isValidTimeHHMM(data.arrivalTime) &&
+             data.ticketPrice is number && data.ticketPrice >= 0 && data.ticketPrice <= 50000 &&
+             data.busType in ['Ordinary', 'Express', 'AC', 'Deluxe'] &&
+             data.operatingDays is list && data.operatingDays.size() >= 1 && data.operatingDays.size() <= 7 &&
+             data.operatingDays.hasOnly(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 400)) &&
+             isValidMemberName(data.createdBy) &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    function isValidNotificationPreference(data) {
+      return data.keys().hasAll(['member', 'dailyReminderEnabled', 'friendActivityEnabled', 'notifyOnEdits', 'reminderTime', 'timezone', 'soundEnabled', 'favouriteBusIds', 'updatedAt']) &&
+             data.keys().hasOnly(['member', 'dailyReminderEnabled', 'friendActivityEnabled', 'notifyOnEdits', 'reminderTime', 'timezone', 'soundEnabled', 'favouriteBusIds', 'updatedAt']) &&
+             isValidMemberName(data.member) &&
+             data.dailyReminderEnabled is bool &&
+             data.friendActivityEnabled is bool &&
+             data.notifyOnEdits is bool &&
+             isValidTimeHHMM(data.reminderTime) &&
+             data.timezone is string && data.timezone.size() >= 1 && data.timezone.size() <= 64 &&
+             data.soundEnabled is bool &&
+             data.favouriteBusIds is list && data.favouriteBusIds.size() <= 100 &&
+             (data.favouriteBusIds.size() == 0 || (data.favouriteBusIds[0] is string && data.favouriteBusIds[0].size() <= 128)) &&
+             data.updatedAt is string && data.updatedAt.size() <= 100;
+    }
+
+    function isValidNotificationLog(data) {
+      return data.keys().hasAll(['id', 'type', 'recipientMember', 'title', 'message', 'dateKey', 'read', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'type', 'recipientMember', 'actorMember', 'expenseId', 'title', 'message', 'dateKey', 'attemptNumber', 'snoozeUntil', 'read', 'metadata', 'createdAt', 'updatedAt']) &&
+             isValidId(data.id) &&
+             data.type in ['daily_reminder', 'friend_activity'] &&
+             isValidMemberName(data.recipientMember) &&
+             (!('actorMember' in data) || isValidMemberName(data.actorMember)) &&
+             (!('expenseId' in data) || (data.expenseId is string && data.expenseId.size() <= 128)) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 300 &&
+             isValidDateYMD(data.dateKey) &&
+             (!('attemptNumber' in data) || (data.attemptNumber is number && (data.attemptNumber == 1 || data.attemptNumber == 2))) &&
+             (!('snoozeUntil' in data) || (data.snoozeUntil is string && data.snoozeUntil.size() <= 100)) &&
+             data.read is bool &&
+             (!('metadata' in data) || data.metadata is map) &&
+             data.createdAt is string && data.createdAt.size() <= 100 &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
+    }
+
+    function isValidDeviceToken(data) {
+      return data.keys().hasAll(['id', 'member', 'token', 'platform', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'member', 'token', 'platform', 'updatedAt']) &&
+             isValidId(data.id) &&
+             isValidMemberName(data.member) &&
+             data.token is string && data.token.size() >= 10 && data.token.size() <= 512 &&
+             data.platform in ['web', 'android-pwa', 'ios-pwa'] &&
              data.updatedAt is string && data.updatedAt.size() <= 100;
     }
 
@@ -58,15 +148,14 @@ service cloud.firestore {
       allow read: if true;
     }
 
-    // Collection Rules
+    // Existing Collection Rules
     match /expenses/{expenseId} {
-      // Allow public access for this shared group ledger
       allow read: if true;
       allow create: if isValidId(expenseId) && isValidExpense(incoming());
       allow update: if isValidId(expenseId) && isValidExpense(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['member', 'amount', 'category', 'paymentMode', 'date', 'time', 'itemName', 'quantity', 'place', 'notes', 'updatedAt'])
+        incoming().diff(existing()).affectedKeys().hasOnly(['member', 'amount', 'category', 'paymentMode', 'date', 'time', 'itemName', 'quantity', 'place', 'notes', 'receiptUrl', 'updatedAt'])
       );
-      allow delete: if true && isValidId(expenseId);
+      allow delete: if isValidId(expenseId);
     }
 
     match /budgets/{budgetKey} {
@@ -77,7 +166,60 @@ service cloud.firestore {
     match /avatars/{memberId} {
       allow read: if true;
       allow write: if isValidId(memberId) && isValidAvatar(incoming());
-      allow delete: if true && isValidId(memberId);
+      allow delete: if isValidId(memberId);
+    }
+
+    // New Collection 1: Shared Group Bus Schedules
+    match /busSchedules/{busId} {
+      allow read: if true;
+      allow create: if isValidId(busId) && incoming().id == busId && isValidBusSchedule(incoming());
+      allow update: if isValidId(busId) && isValidBusSchedule(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'busName', 'busNumber', 'operator', 'fromLocation', 'toLocation',
+          'departureTime', 'arrivalTime', 'ticketPrice', 'busType',
+          'operatingDays', 'notes', 'updatedAt'
+        ]);
+      allow delete: if isValidId(busId);
+    }
+
+    // New Collection 2: Per-Member Notification Preferences (No FCM Tokens Stored Here)
+    match /notificationPreferences/{memberId} {
+      allow get: if isValidMemberSlug(memberId);
+      allow list: if true;
+      allow create: if isValidMemberSlug(memberId) && isValidNotificationPreference(incoming());
+      allow update: if isValidMemberSlug(memberId) && isValidNotificationPreference(incoming()) &&
+        incoming().member == existing().member &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'dailyReminderEnabled', 'friendActivityEnabled', 'notifyOnEdits',
+          'reminderTime', 'timezone', 'soundEnabled', 'favouriteBusIds', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // New Collection 3: Idempotent Notification Logs
+    match /notificationLogs/{notificationId} {
+      allow read: if true;
+      allow create: if isValidId(notificationId) && incoming().id == notificationId && isValidNotificationLog(incoming());
+      allow update: if isValidId(notificationId) && isValidNotificationLog(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().type == existing().type &&
+        incoming().recipientMember == existing().recipientMember &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['read', 'snoozeUntil', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // New Collection 4: Isolated FCM Device Tokens (NEVER publicly readable by clients)
+    match /deviceTokens/{tokenId} {
+      allow read: if false;
+      allow create: if isValidId(tokenId) && incoming().id == tokenId && isValidDeviceToken(incoming());
+      allow update: if isValidId(tokenId) && isValidDeviceToken(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['member', 'token', 'platform', 'updatedAt']);
+      allow delete: if isValidId(tokenId);
     }
   }
 }

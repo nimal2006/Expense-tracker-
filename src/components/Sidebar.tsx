@@ -21,7 +21,9 @@ import {
   Sun,
   Wallet,
   WifiOff,
-  Wifi
+  Wifi,
+  Bus,
+  Bell
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,6 +33,8 @@ interface SidebarProps {
   onSelectMember: (member: MemberName) => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  onOpenNotifications?: () => void;
+  unreadCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -39,7 +43,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentMember,
   onSelectMember,
   isDarkMode,
-  onToggleDarkMode
+  onToggleDarkMode,
+  onOpenNotifications,
+  unreadCount = 0
 }) => {
   const { isOnline } = useOnlineStatus();
   const { members } = useMemberAvatars();
@@ -49,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'history', label: 'My Expenses', icon: Receipt },
     { id: 'members', label: 'Members', icon: Users },
     { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'buses', label: 'Bus Schedules', icon: Bus },
     { id: 'budgets', label: 'Budgets', icon: PiggyBank },
     { id: 'categories', label: 'Categories', icon: Tag },
     { id: 'payment-methods', label: 'Payment Methods', icon: CreditCard, tabTarget: 'history' as ActiveTab },
@@ -106,7 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={item.id}
                 onClick={() => onSelectTab(targetTab)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                   isActive
                     ? 'bg-gradient-to-r from-[#7C5CFC] to-[#22D3EE] text-white font-bold shadow-md shadow-[#7C5CFC]/25'
                     : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#151D35]/60'
@@ -117,6 +124,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
+
+          {onOpenNotifications && (
+            <button
+              type="button"
+              onClick={onOpenNotifications}
+              className="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#151D35]/60 transition-all cursor-pointer"
+            >
+              <span className="flex items-center gap-3">
+                <Bell className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Notifications</span>
+              </span>
+              {unreadCount > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md bg-[#7C5CFC]/20 text-[#7C5CFC] dark:text-[#22D3EE] text-[11px] font-bold font-mono tabular-nums">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
         </nav>
       </div>
 
