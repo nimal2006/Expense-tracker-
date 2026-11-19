@@ -47,12 +47,15 @@ import { NotificationDrawer } from './components/NotificationDrawer';
 import { ExpenseDetailModal } from './components/ExpenseDetailModal';
 import { NotificationToast } from './components/NotificationToast';
 import { LoginModal } from './components/LoginModal';
+import { MemberAvatarModal } from './components/MemberAvatarModal';
 import { EditExpenseModal } from './components/EditExpenseModal';
 import { BudgetModal } from './components/BudgetModal';
 import { PdfImporterModal } from './components/PdfImporterModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { SplashScreen } from './components/SplashScreen';
 import { AppLogo } from './components/AppLogo';
+import { useMemberAvatars } from './hooks/useMemberAvatars';
+import { auth } from './lib/firebase';
 
 export const App: React.FC = () => {
   // Navigation & User state
@@ -149,6 +152,9 @@ export const App: React.FC = () => {
   );
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState<boolean>(false);
+  const [notificationDrawerTab, setNotificationDrawerTab] = useState<'activity' | 'settings'>('activity');
+  const [isMyProfileModalOpen, setIsMyProfileModalOpen] = useState<boolean>(false);
+  const { getMember: getMemberObj } = useMemberAvatars();
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
   const [liveToast, setLiveToast] = useState<NotificationLog | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<BrowserNotificationPermission>(() =>
@@ -539,6 +545,24 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleOpenNotificationsTab = (tab: 'activity' | 'settings') => {
+    setNotificationDrawerTab(tab);
+    setIsNotificationDrawerOpen(true);
+  };
+
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('friends_expense_current_user_v2');
+      if (auth.currentUser) {
+        await auth.signOut();
+      }
+    } catch {
+      // ignore auth signOut errors when operating in local profile mode
+    }
+    setIsInitialSetup(true);
+    setIsLoginModalOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#080B18] text-slate-900 dark:text-[#F8FAFC] flex flex-col md:flex-row antialiased font-sans transition-colors duration-200">
       
@@ -565,7 +589,7 @@ export const App: React.FC = () => {
           onSelectMember={handleSelectMember}
           isDarkMode={isDarkMode}
           onToggleDarkMode={handleToggleDarkMode}
-          onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
+          onOpenNotifications={() => handleOpenNotificationsTab('activity')}
           unreadCount={unreadNotificationsCount}
         />
       </div>
@@ -584,9 +608,13 @@ export const App: React.FC = () => {
           onToggleDarkMode={handleToggleDarkMode}
           onOpenAddModal={() => setActiveTab('add')}
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
+          onOpenMyProfile={() => setIsMyProfileModalOpen(true)}
+          onOpenAccountSettings={() => setIsLoginModalOpen(true)}
+          onOpenNotificationSettings={() => handleOpenNotificationsTab('settings')}
+          onLogout={handleLogout}
           onOpenBuses={() => setActiveTab('buses')}
           isBusesActive={activeTab === 'buses'}
-          onOpenNotifications={() => setIsNotificationDrawerOpen(true)}
+          onOpenNotifications={() => handleOpenNotificationsTab('activity')}
           unreadCount={unreadNotificationsCount}
           expenses={expenses}
         />
@@ -741,10 +769,19 @@ export const App: React.FC = () => {
         onExpensesMerged={reloadData}
       />
 
+      {/* My Profile / Avatar Modal (Opened from Header Profile Menu) */}
+      <MemberAvatarModal
+        isOpen={isMyProfileModalOpen}
+        onClose={() => setIsMyProfileModalOpen(false)}
+        member={getMemberObj(currentMember)}
+        currentMember={currentMember}
+      />
+
       {/* Notifications Drawer (Activity Feed + Compact Per-Member Settings) */}
       <NotificationDrawer
         isOpen={isNotificationDrawerOpen}
         onClose={() => setIsNotificationDrawerOpen(false)}
+        initialTab={notificationDrawerTab}
         currentMember={currentMember}
         logs={notificationLogs}
         preferences={notificationPrefs}

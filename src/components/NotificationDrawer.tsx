@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Bell,
@@ -25,6 +25,7 @@ import { formatRelativeTime, formatTime12h } from '../utils/istTime';
 interface NotificationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'activity' | 'settings';
   currentMember: MemberName;
   logs: NotificationLog[];
   preferences: NotificationPreferences;
@@ -43,6 +44,7 @@ const REMINDER_PRESETS = ['19:00', '20:00', '21:00', '22:00'];
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   isOpen,
   onClose,
+  initialTab = 'activity',
   currentMember,
   logs,
   preferences,
@@ -55,9 +57,15 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   onTapAddExpenseFromReminder,
   onTapRemindMeLater,
 }) => {
-  const [activeTab, setActiveTab] = useState<'activity' | 'settings'>('activity');
+  const [activeTab, setActiveTab] = useState<'activity' | 'settings'>(initialTab);
   const [isRequestingPerm, setIsRequestingPerm] = useState(false);
   const { getMember } = useMemberAvatars();
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   const unreadCount = logs.filter((l) => !l.read).length;
 
